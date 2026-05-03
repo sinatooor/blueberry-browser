@@ -6,6 +6,7 @@ import {
   Globe,
   Folder,
   Brain,
+  Loader2,
 } from 'lucide-react'
 import { useWorkbench } from '../contexts/WorkbenchContext'
 import { ProjectSwitcher } from './ProjectSwitcher'
@@ -15,6 +16,7 @@ import { NetworkPanel } from './NetworkPanel'
 import { FilesPanel } from './FilesPanel'
 import { MemoryPanel } from './MemoryPanel'
 import { Chat } from '../../components/Chat'
+import { ApprovalDialog } from './ApprovalDialog'
 import { cn } from '@common/lib/utils'
 
 type TabKey = 'chat' | 'mission' | 'code' | 'network' | 'files' | 'memory'
@@ -46,7 +48,7 @@ const TabBar: React.FC<{ active: TabKey; onChange: (t: TabKey) => void }> = ({
   }
 
   return (
-    <div className="flex items-stretch border-b border-border bg-muted/20">
+    <div className="flex items-stretch border-b border-border bg-background/60 backdrop-blur-sm">
       {TABS.map(({ key, label, Icon }) => {
         const badge = badgeFor(key)
         const isActive = active === key
@@ -55,21 +57,25 @@ const TabBar: React.FC<{ active: TabKey; onChange: (t: TabKey) => void }> = ({
             key={key}
             onClick={() => onChange(key)}
             className={cn(
-              'relative flex-1 flex flex-col items-center justify-center gap-0.5 py-1.5 text-[10px] uppercase tracking-wide',
+              'relative flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium tracking-wide uppercase',
+              'hover-warm',
               isActive
-                ? 'bg-background border-b-2 border-primary text-foreground -mb-px'
-                : 'text-muted-foreground hover:bg-muted/50',
+                ? 'text-foreground'
+                : 'text-muted-foreground',
             )}
           >
-            <Icon className="size-3.5" />
-            {label}
+            <Icon className={cn('size-3.5 transition-colors', isActive && 'text-primary')} />
+            <span className="text-[9.5px]">{label}</span>
+            {isActive && (
+              <span className="absolute bottom-0 left-1/2 -translate-x-1/2 h-[2px] w-6 rounded-full bg-primary" />
+            )}
             {badge !== null && (
               <span
                 className={cn(
-                  'absolute top-1 right-1 text-[9px] font-mono px-1 rounded',
+                  'absolute top-1 right-1.5 text-[9px] font-mono px-1 rounded leading-tight tabular-nums',
                   badge === '!'
-                    ? 'bg-amber-500 text-white'
-                    : 'bg-primary/80 text-primary-foreground',
+                    ? 'bg-warning text-background'
+                    : 'bg-primary/90 text-primary-foreground',
                 )}
               >
                 {badge}
@@ -88,31 +94,38 @@ const RunPill: React.FC = () => {
   const live = ['running', 'planning', 'awaiting-approval', 'paused'].includes(currentRun.status)
   if (!live && currentRun.status !== 'done') return null
   const liveCount = steps.filter((s) => s.status !== 'planning').length
+  const dotCls =
+    currentRun.status === 'running'
+      ? 'bg-primary animate-claude-pulse'
+      : currentRun.status === 'paused'
+      ? 'bg-warning'
+      : currentRun.status === 'awaiting-approval'
+      ? 'bg-warning animate-claude-pulse'
+      : currentRun.status === 'done'
+      ? 'bg-success'
+      : 'bg-muted-foreground/60 animate-claude-pulse'
+
   return (
-    <div className="px-3 py-1.5 text-[11px] flex items-center gap-1.5 border-b border-border bg-muted/30">
-      <span
-        className={cn(
-          'size-2 rounded-full',
-          currentRun.status === 'running' && 'bg-sky-500 animate-pulse',
-          currentRun.status === 'paused' && 'bg-amber-500',
-          currentRun.status === 'awaiting-approval' && 'bg-amber-500 animate-pulse',
-          currentRun.status === 'done' && 'bg-emerald-500',
-          currentRun.status === 'planning' && 'bg-gray-400 animate-pulse',
-        )}
-      />
-      <span className="font-mono">
+    <div className="px-4 py-2 text-[11px] flex items-center gap-2 border-b border-border grad-warm">
+      <span className={cn('size-2 rounded-full shrink-0', dotCls)} />
+      <span className="font-medium text-foreground/90 tabular-nums">
         {currentRun.status === 'planning'
-          ? 'planning…'
+          ? 'Planning…'
           : currentRun.status === 'awaiting-approval'
-          ? 'awaiting approval'
+          ? 'Awaiting approval'
           : currentRun.status === 'paused'
-          ? 'paused'
-          : `step ${liveCount}`}
+          ? 'Paused'
+          : currentRun.status === 'done'
+          ? 'Done'
+          : `Step ${liveCount}`}
       </span>
       {currentRun.summary && (
-        <span className="text-muted-foreground italic line-clamp-1 ml-1">
-          · {currentRun.summary}
+        <span className="text-muted-foreground italic line-clamp-1 ml-1 font-serif text-[12px]">
+          {currentRun.summary}
         </span>
+      )}
+      {currentRun.status === 'planning' && (
+        <Loader2 className="size-3 animate-spin text-muted-foreground ml-auto shrink-0" />
       )}
     </div>
   )
@@ -122,24 +135,25 @@ const Toasts: React.FC = () => {
   const { toasts, dismissToast } = useWorkbench()
   if (toasts.length === 0) return null
   return (
-    <div className="absolute top-2 right-2 z-50 space-y-1.5 max-w-[280px]">
+    <div className="absolute top-3 right-3 z-50 space-y-2 max-w-[300px]">
       {toasts.map((t) => (
         <div
           key={t.id}
           className={cn(
-            'rounded-md border bg-background shadow-md px-3 py-2 text-xs',
-            t.kind === 'error' && 'border-rose-300',
-            t.kind === 'warn' && 'border-amber-300',
+            'card-soft px-3 py-2.5 text-xs shadow-subtle animate-fade-in',
+            t.kind === 'error' && '!border-destructive/40',
+            t.kind === 'warn' && '!border-warning/50',
           )}
         >
           <div className="flex items-start gap-2">
             <div className="flex-1">
-              <div className="font-medium">{t.title}</div>
-              {t.body && <div className="text-muted-foreground">{t.body}</div>}
+              <div className="font-medium text-foreground">{t.title}</div>
+              {t.body && <div className="text-muted-foreground mt-0.5">{t.body}</div>}
             </div>
             <button
               onClick={() => dismissToast(t.id)}
-              className="text-muted-foreground hover:text-foreground"
+              className="text-muted-foreground hover:text-foreground leading-none text-base"
+              aria-label="Dismiss"
             >
               ×
             </button>
@@ -154,12 +168,10 @@ export const Workbench: React.FC = () => {
   const [tab, setTab] = useState<TabKey>('mission')
   const { currentRun, proposedMemory } = useWorkbench()
 
-  // Auto-jump to Mission when a run starts
   useEffect(() => {
     if (currentRun && tab === 'chat') setTab('mission')
   }, [currentRun?.id])
 
-  // Pop Memory tab open when there's a proposal waiting
   useEffect(() => {
     if (proposedMemory) setTab('memory')
   }, [proposedMemory])
@@ -177,6 +189,7 @@ export const Workbench: React.FC = () => {
         {tab === 'files' && <FilesPanel />}
         {tab === 'memory' && <MemoryPanel />}
       </div>
+      <ApprovalDialog />
       <Toasts />
     </div>
   )

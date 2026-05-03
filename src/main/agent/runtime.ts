@@ -470,6 +470,16 @@ Style:
       baseStep.action = action;
       baseStep.riskLevel = risk.level;
 
+      // Caution actions: non-blocking toast so the user can intervene if needed.
+      // Per PRD §F1, caution actions get a soft heads-up rather than a modal.
+      if (risk.level === "caution") {
+        this.send(Channels.EventToast, {
+          kind: "warn",
+          title: "Caution",
+          body: risk.reason || `Step ${stepIndex + 1}: ${baseStep.goal}`,
+        });
+      }
+
       // Approval gate
       if (risk.level === "destructive") {
         const verdict = await this.waitForApproval(h, baseStep);

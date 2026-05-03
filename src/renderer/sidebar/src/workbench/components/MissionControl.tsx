@@ -10,40 +10,42 @@ import {
   ChevronDown,
   ChevronRight,
   Loader2,
+  ArrowRight,
 } from 'lucide-react'
 import { useWorkbench } from '../contexts/WorkbenchContext'
 import type { AgentStep, RiskLevel, StepStatus } from '../../../../../common/types'
 import { cn } from '@common/lib/utils'
 
 const RiskBadge: React.FC<{ level: RiskLevel }> = ({ level }) => {
-  if (level === 'destructive')
-    return (
-      <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 px-1.5 py-0.5 rounded">
-        <ShieldAlert className="size-3" /> destructive
-      </span>
-    )
-  if (level === 'caution')
-    return (
-      <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded">
-        <AlertTriangle className="size-3" /> caution
-      </span>
-    )
+  const cls = {
+    destructive: 'text-destructive bg-destructive/10 border-destructive/20',
+    caution: 'text-warning bg-warning/10 border-warning/20',
+    safe: 'text-success bg-success/10 border-success/20',
+  }[level]
+  const Icon = level === 'destructive' ? ShieldAlert : level === 'caution' ? AlertTriangle : ShieldCheck
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded">
-      <ShieldCheck className="size-3" /> safe
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 text-[9.5px] font-medium tracking-wide uppercase px-1.5 py-0.5 rounded-md border',
+        cls,
+      )}
+    >
+      <Icon className="size-2.5" />
+      {level}
     </span>
   )
 }
 
-const StatusDot: React.FC<{ status: StepStatus }> = ({ status }) => {
-  const base = 'size-2.5 rounded-full inline-block'
-  if (status === 'running') return <span className={cn(base, 'bg-sky-500 animate-pulse')} />
+const StatusGlyph: React.FC<{ status: StepStatus }> = ({ status }) => {
+  const base = 'size-2 rounded-full inline-block ring-2 ring-background'
+  if (status === 'running')
+    return <span className={cn(base, 'bg-primary animate-claude-pulse')} />
   if (status === 'awaiting-approval')
-    return <span className={cn(base, 'bg-amber-500 animate-pulse')} />
-  if (status === 'done') return <span className={cn(base, 'bg-emerald-500')} />
-  if (status === 'failed') return <span className={cn(base, 'bg-rose-500')} />
-  if (status === 'skipped') return <span className={cn(base, 'bg-gray-400')} />
-  return <span className={cn(base, 'bg-gray-300 dark:bg-gray-600')} />
+    return <span className={cn(base, 'bg-warning animate-claude-pulse')} />
+  if (status === 'done') return <span className={cn(base, 'bg-success')} />
+  if (status === 'failed') return <span className={cn(base, 'bg-destructive')} />
+  if (status === 'skipped') return <span className={cn(base, 'bg-muted-foreground/50')} />
+  return <span className={cn(base, 'bg-border-strong')} />
 }
 
 function actionLabel(step: AgentStep): string {
@@ -76,95 +78,77 @@ function actionLabel(step: AgentStep): string {
   }
 }
 
-const StepRow: React.FC<{ step: AgentStep }> = ({ step }) => {
+const StepRow: React.FC<{ step: AgentStep; isLast: boolean }> = ({ step, isLast }) => {
   const [open, setOpen] = useState(false)
-  const { approveStep } = useWorkbench()
-  const awaiting = step.status === 'awaiting-approval'
   const running = step.status === 'running'
+  const awaiting = step.status === 'awaiting-approval'
+  const done = step.status === 'done'
 
   return (
-    <div
-      className={cn(
-        'border-l-2 pl-3 py-2 transition-colors',
-        running && 'border-sky-500 bg-sky-50/40 dark:bg-sky-950/20',
-        awaiting && 'border-amber-500 bg-amber-50/40 dark:bg-amber-950/20',
-        step.status === 'done' && 'border-emerald-500',
-        step.status === 'failed' && 'border-rose-500',
-        step.status === 'planning' && 'border-gray-300 dark:border-gray-600',
+    <div className="relative">
+      {/* Vertical timeline rail */}
+      {!isLast && (
+        <span
+          className={cn(
+            'absolute left-[14px] top-7 bottom-0 w-px',
+            done ? 'bg-success/40' : 'bg-border',
+          )}
+        />
       )}
-    >
+
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-start gap-2 text-left"
+        className={cn(
+          'w-full flex items-start gap-3 px-3 py-2.5 text-left rounded-lg transition-colors',
+          running && 'bg-primary/5 ring-1 ring-primary/20',
+          awaiting && 'bg-warning/8 ring-1 ring-warning/30',
+        )}
       >
-        <span className="mt-1 shrink-0">
-          <StatusDot status={step.status} />
-        </span>
-        <span className="shrink-0 text-xs text-muted-foreground tabular-nums w-6">
-          {String(step.index + 1).padStart(2, '0')}
+        <span className="mt-1.5 shrink-0 relative z-10">
+          <StatusGlyph status={step.status} />
         </span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium text-sm truncate">{step.goal}</span>
+            <span className="text-[10px] font-mono tabular-nums text-muted-foreground">
+              {String(step.index + 1).padStart(2, '0')}
+            </span>
+            <span className="font-medium text-sm truncate text-foreground">{step.goal}</span>
             <RiskBadge level={step.riskLevel} />
-            {step.confidence && (
-              <span className="text-[10px] text-muted-foreground">·conf {step.confidence}/5</span>
-            )}
           </div>
           {step.rationale && (
-            <div className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+            <div className="text-[12px] text-muted-foreground mt-1 font-serif italic line-clamp-2">
               {step.rationale}
             </div>
           )}
-          <div className="text-[11px] text-muted-foreground mt-1 font-mono truncate">
+          <div className="text-[10.5px] text-muted-foreground/80 mt-1 font-mono truncate">
             {actionLabel(step)}
           </div>
         </div>
-        <span className="shrink-0 text-muted-foreground mt-1">
+        <span className="shrink-0 text-muted-foreground mt-1.5">
           {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
         </span>
       </button>
 
-      {awaiting && (
-        <div className="mt-2 ml-6 p-3 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-800 dark:text-amber-200 mb-1">
-            <ShieldAlert className="size-3.5" />
-            Approval required
-          </div>
-          <div className="text-xs text-amber-900/80 dark:text-amber-100/80 mb-2">
-            This step looks destructive. Approve to continue or reject to ask the agent for an alternative.
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => approveStep(step.id, 'approve')}
-              className="text-xs px-2.5 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-500"
-            >
-              Approve
-            </button>
-            <button
-              onClick={() => approveStep(step.id, 'reject')}
-              className="text-xs px-2.5 py-1 rounded bg-rose-600 text-white hover:bg-rose-500"
-            >
-              Reject
-            </button>
-          </div>
-        </div>
-      )}
-
       {open && (
-        <div className="mt-2 ml-6 space-y-2 text-xs">
-          <div className="font-mono bg-muted/40 p-2 rounded overflow-x-auto whitespace-pre-wrap break-all">
+        <div className="ml-9 mr-2 mb-3 mt-1 space-y-2 text-xs animate-fade-in">
+          <div className="card-soft !rounded-md bg-muted/30 p-2 font-mono text-[10.5px] overflow-x-auto whitespace-pre-wrap break-all">
             {JSON.stringify(step.action, null, 2)}
           </div>
           {step.result?.summary && (
-            <div className="text-muted-foreground">↳ {step.result.summary}</div>
+            <div className="text-muted-foreground flex gap-1.5 items-start">
+              <ArrowRight className="size-3 mt-0.5 shrink-0 text-success" />
+              <span>{step.result.summary}</span>
+            </div>
           )}
           {step.result?.error && (
-            <div className="text-rose-600 dark:text-rose-400">⚠ {step.result.error}</div>
+            <div className="text-destructive flex gap-1.5 items-start">
+              <AlertTriangle className="size-3 mt-0.5 shrink-0" />
+              <span>{step.result.error}</span>
+            </div>
           )}
           {step.result?.output && (
-            <pre className="text-[11px] bg-muted/30 p-2 rounded overflow-x-auto max-h-40 whitespace-pre-wrap">
+            <pre className="text-[10.5px] bg-muted/30 p-2 rounded-md overflow-x-auto max-h-32 whitespace-pre-wrap font-mono">
               {step.result.output}
             </pre>
           )}
@@ -172,20 +156,24 @@ const StepRow: React.FC<{ step: AgentStep }> = ({ step }) => {
             <div className="grid grid-cols-2 gap-2">
               {step.screenshotBefore && (
                 <div>
-                  <div className="text-[10px] text-muted-foreground mb-0.5">before</div>
+                  <div className="text-[10px] text-muted-foreground mb-1 font-medium uppercase tracking-wide">
+                    Before
+                  </div>
                   <img
                     src={`file://${step.screenshotBefore}`}
-                    className="rounded border border-border w-full"
+                    className="rounded-md border border-border w-full"
                     alt="before"
                   />
                 </div>
               )}
               {step.screenshotAfter && (
                 <div>
-                  <div className="text-[10px] text-muted-foreground mb-0.5">after</div>
+                  <div className="text-[10px] text-muted-foreground mb-1 font-medium uppercase tracking-wide">
+                    After
+                  </div>
                   <img
                     src={`file://${step.screenshotAfter}`}
-                    className="rounded border border-border w-full"
+                    className="rounded-md border border-border w-full"
                     alt="after"
                   />
                 </div>
@@ -206,7 +194,7 @@ const Composer: React.FC = () => {
 
   return (
     <form
-      className="flex gap-2 p-3 border-t border-border bg-background"
+      className="px-3 py-3 border-t border-border bg-surface"
       onSubmit={(e) => {
         e.preventDefault()
         if (!value.trim() || isLive) return
@@ -214,26 +202,55 @@ const Composer: React.FC = () => {
         setValue('')
       }}
     >
-      <input
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        placeholder={
-          activeProject && activeTabId
-            ? 'What should the agent do? e.g. "Find the revenue dip and explain it"'
-            : 'Pick a project and load a page to start'
-        }
-        disabled={!!isLive || !activeProject || !activeTabId}
-        className="flex-1 px-3 py-2 text-sm rounded-md border border-border bg-background outline-none focus:border-primary/40"
-      />
-      <button
-        disabled={!value.trim() || !!isLive || !activeProject || !activeTabId}
+      <div
         className={cn(
-          'px-3 py-2 rounded-md text-sm font-medium',
-          'bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50',
+          'card-soft flex items-end gap-1 px-3 py-2 transition-shadow',
+          'focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/30',
         )}
       >
-        Run
-      </button>
+        <textarea
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              if (value.trim() && !isLive) {
+                void startAgent(value.trim())
+                setValue('')
+              }
+            }
+          }}
+          rows={1}
+          placeholder={
+            activeProject && activeTabId
+              ? 'Describe the task — the agent will plan and act, step by step.'
+              : 'Pick a project and load a page to begin.'
+          }
+          disabled={!!isLive || !activeProject || !activeTabId}
+          className="flex-1 resize-none bg-transparent outline-none text-sm placeholder:text-muted-foreground/70 leading-relaxed py-1 max-h-32"
+          style={{ minHeight: 24 }}
+        />
+        <button
+          type="submit"
+          disabled={!value.trim() || !!isLive || !activeProject || !activeTabId}
+          className={cn(
+            'size-8 rounded-md flex items-center justify-center shrink-0',
+            'bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40 transition-opacity',
+          )}
+          aria-label="Run agent"
+        >
+          <ArrowRight className="size-4" />
+        </button>
+      </div>
+      <div className="text-[10px] text-muted-foreground mt-1.5 px-1 flex items-center justify-between">
+        <span>
+          <kbd className="font-mono px-1 rounded bg-muted">↵</kbd> to run ·{' '}
+          <kbd className="font-mono px-1 rounded bg-muted">⇧↵</kbd> for newline
+        </span>
+        {activeTabId && (
+          <span className="font-mono opacity-70">tab #{activeTabId}</span>
+        )}
+      </div>
     </form>
   )
 }
@@ -243,16 +260,16 @@ const ControlBar: React.FC = () => {
   const live =
     currentRun && ['running', 'planning', 'awaiting-approval', 'paused'].includes(currentRun.status)
   return (
-    <div className="flex items-center gap-2 px-3 py-2 border-t border-border bg-muted/30">
+    <div className="flex items-center gap-1.5 px-3 py-2 border-t border-border bg-surface">
       <button
         onClick={() => (paused ? resumeAgent() : pauseAgent())}
         disabled={!live}
         className={cn(
-          'flex items-center gap-1 text-xs px-2 py-1 rounded',
+          'flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-md transition-colors',
           paused
-            ? 'bg-primary text-primary-foreground'
-            : 'bg-background border border-border hover:bg-muted',
-          'disabled:opacity-40',
+            ? 'bg-primary text-primary-foreground hover:opacity-90'
+            : 'border border-border hover:bg-muted',
+          'disabled:opacity-30 disabled:cursor-not-allowed',
         )}
       >
         {paused ? <Play className="size-3" /> : <Pause className="size-3" />}
@@ -261,22 +278,15 @@ const ControlBar: React.FC = () => {
       <button
         onClick={cancelAgent}
         disabled={!live}
-        className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-background border border-border hover:bg-muted disabled:opacity-40"
+        className="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-md border border-border hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
       >
         <Square className="size-3" />
         Cancel
       </button>
       <div className="flex-1" />
-      <div className="text-xs text-muted-foreground">
+      <div className="text-[11px] text-muted-foreground">
         {currentRun ? (
-          <>
-            <span className="capitalize">{currentRun.status}</span>
-            {currentRun.summary && (
-              <span className="ml-2 text-muted-foreground/80 italic line-clamp-1">
-                {currentRun.summary}
-              </span>
-            )}
-          </>
+          <span className="capitalize font-medium">{currentRun.status}</span>
         ) : (
           'idle'
         )}
@@ -289,35 +299,43 @@ export const MissionControl: React.FC = () => {
   const { steps, currentRun } = useWorkbench()
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto">
-        <div className="p-3 border-b border-border">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-            <Sparkles className="size-3.5" />
-            Mission Control
-          </div>
-          <div className="text-xs text-muted-foreground/80 mt-0.5">
-            Every action the agent takes is logged here, with before/after screenshots and approval gates for anything destructive.
-          </div>
+      <div className="px-4 py-3 border-b border-border">
+        <div className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+          <Sparkles className="size-3.5 text-primary" />
+          Mission Control
         </div>
+        <div className="text-[12px] text-muted-foreground/80 mt-1 font-serif italic">
+          Every action the agent takes, in order — with rationale, screenshots, and
+          approval gates for anything destructive.
+        </div>
+      </div>
 
+      <div className="flex-1 overflow-y-auto px-2 py-2">
         {steps.length === 0 ? (
-          <div className="p-6 text-center text-xs text-muted-foreground">
+          <div className="px-4 py-12 text-center">
             {currentRun?.status === 'planning' ? (
-              <span className="inline-flex items-center gap-1.5">
-                <Loader2 className="size-3 animate-spin" /> Planning…
+              <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="size-3.5 animate-spin" /> Planning the first step…
               </span>
             ) : (
-              'Start a run from the prompt below to see steps appear here.'
+              <div className="space-y-2">
+                <Sparkles className="size-7 mx-auto text-muted-foreground/40" />
+                <div className="text-xs text-muted-foreground font-serif italic max-w-xs mx-auto">
+                  Describe a task below — the agent will break it into steps and run them
+                  here, transparently.
+                </div>
+              </div>
             )}
           </div>
         ) : (
-          <div className="px-3 pb-3 space-y-1">
-            {steps.map((s) => (
-              <StepRow key={s.id} step={s} />
+          <div className="space-y-0.5">
+            {steps.map((s, i) => (
+              <StepRow key={s.id} step={s} isLast={i === steps.length - 1} />
             ))}
           </div>
         )}
       </div>
+
       <ControlBar />
       <Composer />
     </div>

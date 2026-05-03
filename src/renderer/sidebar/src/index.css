@@ -4,50 +4,67 @@
 
 @layer base {
   :root {
-    /* Light mode */
-    --background: 255 255 255;
-    --foreground: 20 20 20;
-    --card: 255 255 255;
-    --card-foreground: 20 20 20;
-    --popover: 255 255 255;
-    --popover-foreground: 20 20 20;
-    --primary: 30 30 30;
-    --primary-foreground: 250 250 250;
-    --secondary: 245 245 245;
-    --secondary-foreground: 30 30 30;
-    --muted: 245 245 245;
-    --muted-foreground: 115 115 115;
-    --accent: 245 245 245;
-    --accent-foreground: 30 30 30;
-    --destructive: 239 68 68;
-    --destructive-foreground: 250 250 250;
-    --border: 229 229 229;
-    --input: 229 229 229;
-    --ring: 161 161 161;
+    /* Claude-inspired warm cream palette */
+    --background: 240 238 230;        /* #F0EEE6 — paper-like cream */
+    --surface: 247 245 238;           /* #F7F5EE — slightly elevated */
+    --foreground: 31 30 28;           /* #1F1E1C — warm near-black */
+    --card: 252 251 246;              /* #FCFBF6 — cards on cream */
+    --card-foreground: 31 30 28;
+    --popover: 252 251 246;
+    --popover-foreground: 31 30 28;
+
+    /* Claude coral as primary accent */
+    --primary: 201 100 66;            /* #C96442 */
+    --primary-foreground: 252 251 246;
+
+    --secondary: 234 230 219;         /* #EAE6DB — slightly darker cream */
+    --secondary-foreground: 31 30 28;
+    --muted: 234 230 219;
+    --muted-foreground: 119 113 102;  /* #777166 — warm gray */
+    --accent: 234 230 219;
+    --accent-foreground: 31 30 28;
+
+    --destructive: 196 73 60;          /* #C4493C — softer than pure red */
+    --destructive-foreground: 252 251 246;
+    --success: 86 130 89;              /* #568259 — muted forest */
+    --warning: 196 142 73;             /* #C48E49 — warm amber */
+
+    --border: 220 215 202;             /* #DCD7CA — soft warm border */
+    --border-strong: 200 192 175;
+    --input: 234 230 219;
+    --ring: 201 100 66;                /* matches primary */
     --radius: 0.625rem;
   }
 
   .dark {
-    /* Dark mode */
-    --background: 20 20 20;
-    --foreground: 250 250 250;
-    --card: 20 20 20;
-    --card-foreground: 250 250 250;
-    --popover: 20 20 20;
-    --popover-foreground: 250 250 250;
-    --primary: 250 250 250;
-    --primary-foreground: 30 30 30;
-    --secondary: 40 40 40;
-    --secondary-foreground: 250 250 250;
-    --muted: 40 40 40;
-    --muted-foreground: 161 161 161;
-    --accent: 40 40 40;
-    --accent-foreground: 250 250 250;
-    --destructive: 220 38 38;
-    --destructive-foreground: 250 250 250;
-    --border: 40 40 40;
-    --input: 40 40 40;
-    --ring: 82 82 82;
+    /* Warm dark — never pure black */
+    --background: 38 38 36;            /* #262624 */
+    --surface: 46 46 43;               /* #2E2E2B */
+    --foreground: 232 229 218;         /* #E8E5DA */
+    --card: 46 46 43;
+    --card-foreground: 232 229 218;
+    --popover: 46 46 43;
+    --popover-foreground: 232 229 218;
+
+    --primary: 217 119 87;             /* #D97757 — coral lifts in dark */
+    --primary-foreground: 31 30 28;
+
+    --secondary: 56 56 52;             /* #383834 */
+    --secondary-foreground: 232 229 218;
+    --muted: 56 56 52;
+    --muted-foreground: 161 156 142;   /* #A19C8E */
+    --accent: 56 56 52;
+    --accent-foreground: 232 229 218;
+
+    --destructive: 217 99 84;          /* #D96354 */
+    --destructive-foreground: 31 30 28;
+    --success: 122 166 124;
+    --warning: 217 169 99;
+
+    --border: 67 66 61;                /* #43423D */
+    --border-strong: 89 87 80;
+    --input: 56 56 52;
+    --ring: 217 119 87;
   }
 }
 
@@ -59,25 +76,63 @@
 
 @layer base {
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui,
       sans-serif;
+    font-feature-settings: 'cv11', 'ss01', 'ss03';
+    letter-spacing: -0.005em;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     @apply bg-background text-foreground;
     height: 100vh;
     overflow: hidden;
   }
+
+  /* Use a serif accent for headings if the user has one installed.
+     Falls back gracefully to system. Claude.ai uses a similar pairing. */
+  h1, h2 {
+    font-family: 'Tiempos Headline', 'Tiempos Text', 'Charter', 'Iowan Old Style',
+      Georgia, serif;
+    letter-spacing: -0.015em;
+  }
+
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+    font-feature-settings: 'liga' 0;
+  }
 }
 
 @layer components {
-  .app-region-drag {
-    -webkit-app-region: drag;
-    user-select: none;
+  .app-region-drag { -webkit-app-region: drag; user-select: none; }
+  .app-region-no-drag { -webkit-app-region: no-drag; }
+
+  /* Surface elevation classes used across the workbench */
+  .surface { background: rgb(var(--surface)); }
+  .card-soft {
+    background: rgb(var(--card));
+    border: 1px solid rgb(var(--border));
+    border-radius: 12px;
   }
 
-  .app-region-no-drag {
-    -webkit-app-region: no-drag;
+  /* Subtle inner glow on hover, used on tab triggers */
+  .hover-warm {
+    transition: background 120ms ease, color 120ms ease;
+  }
+  .hover-warm:hover {
+    background: rgb(var(--secondary));
+  }
+
+  /* The pulse used on running steps — softer than animate-pulse */
+  @keyframes claude-pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.55; }
+  }
+  .animate-claude-pulse { animation: claude-pulse 1.6s ease-in-out infinite; }
+
+  /* A barely-there gradient for hero areas (e.g. the run pill) */
+  .grad-warm {
+    background: linear-gradient(180deg,
+      rgb(var(--surface)) 0%,
+      rgb(var(--background)) 100%);
   }
 }
 
@@ -87,21 +142,15 @@
   flex-direction: column;
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: #f1f1f1;
-}
-
+/* Refined scrollbars to match the warm palette */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
-  border-radius: 3px;
+  background: rgb(var(--border));
+  border-radius: 8px;
+  border: 2px solid rgb(var(--background));
 }
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--border-strong)); }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
-}
-
+/* Selection in the warm palette */
+::selection { background: rgb(var(--primary) / 0.18); }
