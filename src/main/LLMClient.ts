@@ -21,9 +21,11 @@ interface StreamChunk {
 
 type LLMProvider = "openai" | "anthropic";
 
+// Keep these in sync with src/main/agent/runtime.ts and src/main/cdp/copilot.ts
+// so all three subsystems pick the same family by default.
 const DEFAULT_MODELS: Record<LLMProvider, string> = {
   openai: "gpt-4o-mini",
-  anthropic: "claude-3-5-sonnet-20241022",
+  anthropic: "claude-sonnet-4-5-20250929",
 };
 
 const MAX_CONTEXT_LENGTH = 4000;
