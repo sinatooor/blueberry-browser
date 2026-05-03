@@ -1,4 +1,5 @@
 import { NativeImage, WebContentsView } from "electron";
+import { networkCapture } from "./cdp/network";
 
 export class Tab {
   private webContentsView: WebContentsView;
@@ -24,6 +25,14 @@ export class Tab {
 
     // Set up event listeners
     this.setupEventListeners();
+
+    // Attach the CDP-based network capture to this tab.
+    // Done after webContents exists; safe to call before navigation.
+    try {
+      networkCapture.attachToWebContents(this.webContentsView.webContents, this._id);
+    } catch (err) {
+      console.warn("[tab] network capture attach failed:", (err as Error).message);
+    }
 
     // Load the initial URL
     this.loadURL(url);
@@ -90,11 +99,11 @@ export class Tab {
   }
 
   async getTabHtml(): Promise<string> {
-    return await this.runJs("return document.documentElement.outerHTML");
+    return await this.runJs("document.documentElement.outerHTML");
   }
 
   async getTabText(): Promise<string> {
-    return await this.runJs("return document.documentElement.innerText");
+    return await this.runJs("document.documentElement.innerText");
   }
 
   loadURL(url: string): Promise<void> {

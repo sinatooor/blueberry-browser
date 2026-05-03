@@ -1,4 +1,15 @@
 import { ElectronAPI } from "@electron-toolkit/preload";
+import type {
+  Project,
+  SandboxFile,
+  AgentRun,
+  AgentStep,
+  NetRequest,
+  SiteMemory,
+  CodeRunResult,
+  CodeOutputChunk,
+  MemoryUpdate,
+} from "../common/types";
 
 interface ChatRequest {
   message: string;
@@ -24,24 +35,98 @@ interface TabInfo {
 }
 
 interface SidebarAPI {
-  // Chat functionality
-  sendChatMessage: (request: ChatRequest) => Promise<void>;
-  onChatResponse: (callback: (data: ChatResponse) => void) => void;
+  sendChatMessage: (request: Partial<ChatRequest>) => Promise<void>;
+  clearChat: () => Promise<void>;
+  getMessages: () => Promise<any[]>;
+  onChatResponse: (cb: (data: ChatResponse) => void) => void;
+  onMessagesUpdated: (cb: (messages: any[]) => void) => void;
   removeChatResponseListener: () => void;
-
-  // Page content access
+  removeMessagesUpdatedListener: () => void;
   getPageContent: () => Promise<string | null>;
   getPageText: () => Promise<string | null>;
   getCurrentUrl: () => Promise<string | null>;
-
-  // Tab information
   getActiveTabInfo: () => Promise<TabInfo | null>;
+}
+
+interface WorkbenchAPI {
+  // Projects
+  listProjects: () => Promise<Project[]>;
+  createProject: (name: string) => Promise<Project>;
+  setActiveProject: (projectId: string) => Promise<{ ok: boolean; projectId?: string }>;
+  getActiveProject: () => Promise<Project | null>;
+
+  // Files
+  listFiles: (projectId: string) => Promise<SandboxFile[]>;
+  readFile: (projectId: string, relPath: string) => Promise<Uint8Array>;
+  revealFile: (projectId: string, relPath: string) => Promise<{ ok: boolean }>;
+  moveFileToProject: (args: {
+    fileId: string;
+    destProjectId: string;
+    fromProjectId: string;
+    relPath: string;
+  }) => Promise<{ ok: boolean }>;
+
+  // Agent
+  startAgent: (args: {
+    prompt: string;
+    projectId?: string;
+    tabId?: string;
+  }) => Promise<{ runId: string }>;
+  cancelAgent: (runId: string) => Promise<{ ok: boolean }>;
+  approveStep: (args: {
+    runId: string;
+    stepId: string;
+    verdict: "approve" | "reject";
+  }) => Promise<{ ok: boolean }>;
+  pauseAgent: (runId: string) => Promise<{ ok: boolean }>;
+  resumeAgent: (runId: string) => Promise<{ ok: boolean }>;
+  listRuns: (projectId: string) => Promise<AgentRun[]>;
+  getRun: (runId: string) => Promise<AgentStep[]>;
+
+  // Code
+  warmupCode: () => Promise<{ ok: boolean }>;
+  runCode: (source: string, projectId?: string) => Promise<CodeRunResult>;
+
+  // Network
+  listNetwork: (opts?: { tabId?: string; limit?: number }) => Promise<NetRequest[]>;
+  getNetwork: (id: string) => Promise<NetRequest | null>;
+  clearNetwork: () => Promise<{ ok: boolean }>;
+  explainNetwork: (id: string) => Promise<string>;
+  generateSnippet: (id: string, language: "curl" | "python" | "typescript") => Promise<string>;
+  extractToCsv: (
+    id: string,
+    filename: string,
+    projectId?: string,
+  ) => Promise<{ ok: boolean; error?: string }>;
+  replayNetwork: (
+    id: string,
+  ) => Promise<{ ok: boolean; status?: number; body?: string; error?: string }>;
+
+  // Memory
+  getMemory: (domain: string) => Promise<SiteMemory>;
+  setMemory: (domain: string, updates: MemoryUpdate[]) => Promise<SiteMemory>;
+  deleteMemory: (domain: string) => Promise<{ ok: boolean }>;
+  listProposedMemory: (domain: string) => Promise<MemoryUpdate[]>;
+  acceptProposedMemory: (domain: string, accepted: MemoryUpdate[]) => Promise<SiteMemory>;
+
+  // Subscriptions return unsubscribe()
+  onAgentStep: (cb: (step: AgentStep) => void) => () => void;
+  onAgentRun: (cb: (run: AgentRun) => void) => () => void;
+  onCodeOutput: (
+    cb: (payload: { runId: string; stepId: string | null; chunk: CodeOutputChunk }) => void,
+  ) => () => void;
+  onNetRequest: (cb: (req: NetRequest) => void) => () => void;
+  onFileAdded: (cb: (payload: { projectId: string; path: string }) => void) => () => void;
+  onMemoryProposed: (cb: (payload: { domain: string; updates: MemoryUpdate[] }) => void) => () => void;
+  onToast: (cb: (payload: { kind: "info" | "warn" | "error"; title: string; body?: string }) => void) => () => void;
 }
 
 declare global {
   interface Window {
     electron: ElectronAPI;
     sidebarAPI: SidebarAPI;
+    workbench: WorkbenchAPI;
   }
 }
 
+export {};

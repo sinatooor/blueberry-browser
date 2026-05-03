@@ -1,12 +1,12 @@
 import React, { useEffect } from 'react'
 import { ChatProvider } from './contexts/ChatContext'
-import { Chat } from './components/Chat'
+import { WorkbenchProvider } from './workbench/contexts/WorkbenchContext'
+import { Workbench } from './workbench/components/Workbench'
 import { useDarkMode } from '@common/hooks/useDarkMode'
 
 const SidebarContent: React.FC = () => {
     const { isDarkMode } = useDarkMode()
 
-    // Apply dark mode class to the document
     useEffect(() => {
         if (isDarkMode) {
             document.documentElement.classList.add('dark')
@@ -15,18 +15,15 @@ const SidebarContent: React.FC = () => {
         }
     }, [isDarkMode])
 
-    return (
-        <div className="h-screen flex flex-col bg-background border-l border-border">
-            <Chat />
-        </div>
-    )
+    return <Workbench />
 }
 
 export const SidebarApp: React.FC = () => {
     return (
-        <ChatProvider>
-            <SidebarContent />
-        </ChatProvider>
+        <WorkbenchProvider>
+            <ChatProvider>
+                <SidebarContent />
+            </ChatProvider>
+        </WorkbenchProvider>
     )
 }
-

@@ -1,0 +1,163 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Pyodide host</title>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+  </head>
+  <body>
+    <pre id="status">booting…</pre>
+    <script>
+      // The preload script (preload.js) exposes window.pyodideBridge.
+      const bridge = window.pyodideBridge;
+
+      let pyodide = null;
+      let warming = null;
+
+      const status = (s) => {
+        const el = document.getElementById("status");
+        if (el) el.textContent = s;
+      };
+
+      async function warmup() {
+        if (pyodide) return;
+        if (warming) return warming;
+        warming = (async () => {
+          status("loading pyodide…");
+          // eslint-disable-next-line no-undef
+          pyodide = await loadPyodide({
+            indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/",
+          });
+          status("loading numpy + pandas + matplotlib…");
+          await pyodide.loadPackage(["numpy", "pandas", "matplotlib"]);
+          await pyodide.runPythonAsync(`
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import io, base64
+
+_PROJECT_OUTPUTS = []
+
+def _capture_show(*args, **kwargs):
+    buf = io.BytesIO()
+    plt.gcf().savefig(buf, format="png", bbox_inches="tight")
+    buf.seek(0)
+    b64 = base64.b64encode(buf.read()).decode("ascii")
+    _PROJECT_OUTPUTS.append({"kind": "image", "data": b64})
+    plt.close('all')
+
+plt.show = _capture_show
+`);
+          status("ready");
+        })();
+        return warming;
+      }
+
+      async function runOne(req) {
+        const { code, projectFiles, runId } = req;
+        await warmup();
+
+        try {
+          const FS = pyodide.FS;
+          if (!FS.analyzePath("/project").exists) FS.mkdir("/project");
+          if (!FS.analyzePath("/project/files").exists) FS.mkdir("/project/files");
+          for (const name of FS.readdir("/project/files")) {
+            if (name === "." || name === "..") continue;
+            try { FS.unlink("/project/files/" + name); } catch {}
+          }
+          for (const f of projectFiles || []) {
+            // f.bytes is a Uint8Array (typed array) from main → preload bridge.
+            FS.writeFile("/project/files/" + f.name, f.bytes);
+          }
+        } catch (e) {
+          bridge.send("pyodide:output", {
+            runId,
+            chunk: { kind: "stderr", text: "fs setup error: " + e.message },
+          });
+        }
+
+        await pyodide.runPythonAsync("_PROJECT_OUTPUTS.clear()");
+
+        const t0 = Date.now();
+        let ok = true;
+        let error;
+        let stdoutBuf = "";
+        let stderrBuf = "";
+
+        pyodide.setStdout({
+          batched: (s) => {
+            stdoutBuf += s + "\n";
+            bridge.send("pyodide:output", {
+              runId,
+              chunk: { kind: "stdout", text: s + "\n" },
+            });
+          },
+        });
+        pyodide.setStderr({
+          batched: (s) => {
+            stderrBuf += s + "\n";
+            bridge.send("pyodide:output", {
+              runId,
+              chunk: { kind: "stderr", text: s + "\n" },
+            });
+          },
+        });
+
+        try {
+          const value = await pyodide.runPythonAsync(code);
+          if (value !== undefined && value !== null) {
+            const valStr =
+              typeof value.toString === "function" ? value.toString() : String(value);
+            bridge.send("pyodide:output", {
+              runId,
+              chunk: { kind: "result", value: valStr },
+            });
+          }
+        } catch (e) {
+          ok = false;
+          error = (e && e.message) || String(e);
+          bridge.send("pyodide:output", {
+            runId,
+            chunk: { kind: "stderr", text: error + "\n" },
+          });
+        }
+
+        let plots = [];
+        try {
+          plots = JSON.parse(
+            await pyodide.runPythonAsync("import json; json.dumps(_PROJECT_OUTPUTS)"),
+          );
+        } catch {}
+
+        bridge.send("pyodide:done", {
+          runId,
+          ok,
+          error,
+          durationMs: Date.now() - t0,
+          plots,
+          stdout: stdoutBuf,
+          stderr: stderrBuf,
+        });
+      }
+
+      bridge.on("pyodide:warmup", () => {
+        warmup()
+          .then(() => bridge.send("pyodide:warm", { ok: true }))
+          .catch((e) => bridge.send("pyodide:warm", { ok: false, error: e.message }));
+      });
+      bridge.on("pyodide:run", (req) => {
+        runOne(req).catch((e) => {
+          bridge.send("pyodide:done", {
+            runId: req.runId,
+            ok: false,
+            error: e.message,
+            durationMs: 0,
+            plots: [],
+          });
+        });
+      });
+
+      bridge.send("pyodide:ready-to-warm", null);
+    </script>
+  </body>
+</html>
