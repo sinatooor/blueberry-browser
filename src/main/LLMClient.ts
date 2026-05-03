@@ -25,7 +25,7 @@ type LLMProvider = "openai" | "anthropic";
 // so all three subsystems pick the same family by default.
 const DEFAULT_MODELS: Record<LLMProvider, string> = {
   openai: "gpt-4o-mini",
-  anthropic: "claude-sonnet-4-5-20250929",
+  anthropic: "claude-sonnet-4-6",
 };
 
 const MAX_CONTEXT_LENGTH = 4000;

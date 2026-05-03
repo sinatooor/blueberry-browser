@@ -12,7 +12,7 @@ import type { NetRequest } from "../../common/types";
 
 function model() {
   if (process.env.LLM_PROVIDER?.toLowerCase() === "anthropic") {
-    return anthropic(process.env.LLM_MODEL || "claude-sonnet-4-5-20250929");
+    return anthropic(process.env.LLM_MODEL || "claude-sonnet-4-6");
   }
   return openai(process.env.LLM_MODEL || "gpt-4o-mini");
 }

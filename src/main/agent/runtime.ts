@@ -88,9 +88,9 @@ export class AgentRuntime {
 
   private getModel() {
     if (process.env.LLM_PROVIDER?.toLowerCase() === "anthropic") {
-      return anthropic(
-        process.env.LLM_MODEL || "claude-sonnet-4-5-20250929",
-      );
+      // Bare alias is the current Anthropic convention for 4.6+ — do not
+      // append a date suffix.
+      return anthropic(process.env.LLM_MODEL || "claude-sonnet-4-6");
     }
     return openai(process.env.LLM_MODEL || "gpt-4o-mini");
   }
