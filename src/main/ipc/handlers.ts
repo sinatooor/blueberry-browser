@@ -25,6 +25,9 @@ import {
   extractToCsv,
   replayGet,
 } from "../cdp/copilot";
+import { buildApiSpec } from "../cdp/spec";
+import { buildFeature } from "../cdp/feature-builder";
+import { evalJs } from "../cdp/actions";
 import {
   getMemory,
   applyUpdates,
@@ -247,6 +250,87 @@ export function registerWorkbenchIpc(win: Window): void {
     const req = networkCapture.get(id);
     if (!req) throw new Error("Request not found");
     return await replayGet(req);
+  });
+
+  // ---- Build (universal extension maker) ----
+  // Returns a compact, sanitized spec of the JSON endpoints captured for the
+  // active tab's origin. Used by the Build composer to show the user what's
+  // available before they ask the LLM to build a feature.
+  ipcMain.handle(Channels.FeatureGetSpec, (_e, payload) => {
+    const { tabId, originFilter, maxEndpoints } = z
+      .object({
+        tabId: z.string().optional(),
+        originFilter: z.string().optional(),
+        maxEndpoints: z.number().int().min(1).max(200).optional(),
+      })
+      .parse(payload ?? {});
+    const tid = tabId ?? win.activeTab?.id;
+    if (!tid) return { tabId: null, origin: null, endpoints: [] };
+    const url = win.getTab(tid)?.url ?? null;
+    let origin: string | null = null;
+    try {
+      if (url) origin = new URL(url).origin;
+    } catch {
+      origin = null;
+    }
+    const endpoints = buildApiSpec({
+      tabId: tid,
+      originFilter: originFilter ?? origin ?? undefined,
+      maxEndpoints,
+    });
+    return { tabId: tid, origin, endpoints };
+  });
+
+  // Calls the LLM with the prompt + spec and returns a strict-JSON BuiltFeature
+  // with static-analysis warnings appended. Does NOT execute anything — the
+  // renderer's ApprovalCard is the gate.
+  ipcMain.handle(Channels.FeatureBuild, async (_e, payload) => {
+    const { prompt, tabId } = z
+      .object({
+        prompt: z.string().min(1),
+        tabId: z.string().optional(),
+      })
+      .parse(payload);
+    const tid = tabId ?? win.activeTab?.id;
+    if (!tid) throw new Error("No active tab");
+    const url = win.getTab(tid)?.url ?? null;
+    let origin: string | null = null;
+    try {
+      if (url) origin = new URL(url).origin;
+    } catch {
+      origin = null;
+    }
+    const spec = buildApiSpec({
+      tabId: tid,
+      originFilter: origin ?? undefined,
+      maxEndpoints: 40,
+    });
+    return await buildFeature({
+      prompt,
+      pageUrl: url,
+      origin,
+      spec,
+    });
+  });
+
+  // Approved by the user — run the generated script in the active tab via
+  // CDP Runtime.evaluate. The script runs in the page's main world so it
+  // inherits cookies and same-origin trust.
+  ipcMain.handle(Channels.FeatureRun, async (_e, payload) => {
+    const { code, tabId, timeoutMs } = z
+      .object({
+        code: z.string().min(1),
+        tabId: z.string().optional(),
+        timeoutMs: z.number().int().min(500).max(60_000).optional(),
+      })
+      .parse(payload);
+    const tid = tabId ?? win.activeTab?.id;
+    if (!tid) throw new Error("No active tab");
+    const tab = win.getTab(tid);
+    if (!tab) throw new Error(`Tab ${tid} not found`);
+    const result = await evalJs(tab.webContents, code, true, timeoutMs ?? 15_000);
+    if (!result.ok) return { ok: false, error: result.error };
+    return { ok: true, value: result.value };
   });
 
   // ---- Memory ----

@@ -37,6 +37,11 @@ export const Channels = {
   NetExtractCsv: "net:extractCsv",
   NetReplay: "net:replay",
 
+  // Build (universal extension maker)
+  FeatureGetSpec: "feature:getSpec",
+  FeatureBuild: "feature:build",
+  FeatureRun: "feature:run",
+
   // Memory
   MemoryGet: "memory:get",
   MemorySet: "memory:set",

@@ -147,3 +147,59 @@ export type CodeRunResult = {
   outputs: CodeOutputChunk[];
   durationMs: number;
 };
+
+// JSON shape inferred from a captured response body. Stays small on purpose:
+// strings are truncated to ~80 chars, arrays sample their first item only,
+// objects cap at 60 keys, depth caps at 6. This is what we hand to the LLM
+// instead of the full body.
+export type SchemaNode =
+  | { type: "string"; example?: string }
+  | { type: "number"; example?: number }
+  | { type: "boolean"; example?: boolean }
+  | { type: "null" }
+  | {
+      type: "array";
+      item: SchemaNode | null;
+      observedLength: number;
+    }
+  | { type: "object"; fields: Record<string, SchemaNode> }
+  | { type: "unknown" };
+
+// One row in the API spec view: a single endpoint (method + origin + path)
+// with sanitized headers and inferred schemas. Multiple captures of the
+// same endpoint collapse into one EndpointSpec.
+export type EndpointSpec = {
+  key: string;
+  origin: string;
+  method: string;
+  pathname: string;
+  url: string; // representative full URL from the most recent capture
+  queryKeys: string[];
+  contentType?: string;
+  // Header values for sensitive keys are "<redacted>" (set by NetworkCapture).
+  requestHeaders: Record<string, string>;
+  hasCsrfHint: boolean;
+  csrfHeaderName?: string;
+  hasAuthHint: boolean;
+  authHeaderName?: string;
+  redactedHeaderNames: string[];
+  requestBodySchema: SchemaNode | null;
+  responseSchema: SchemaNode | null;
+  responseStatus?: number;
+  count: number; // how many times this endpoint was hit during capture
+  lastSeen: number;
+};
+
+// LLM output for the Build flow. Strict-JSON contract — everything in the
+// approval card derives from these fields. `warnings` is appended by the
+// main process after static analysis.
+export type BuiltFeature = {
+  description: string;
+  code: string;
+  endpoints_used: string[];
+  uses_csrf: boolean;
+  uses_cookies: boolean;
+  mutates_data: boolean;
+  ui_changes: string;
+  warnings: string[];
+};

@@ -19,11 +19,14 @@ import { Chat } from '../../components/Chat'
 import { ApprovalDialog } from './ApprovalDialog'
 import { cn } from '@common/lib/utils'
 
+// `mission` is preserved as the internal TabKey to keep IPC + storage stable;
+// it surfaces in the UI as "Build" — that tab is now the universal-extension
+// flow plus the agent timeline below it.
 type TabKey = 'chat' | 'mission' | 'code' | 'network' | 'files' | 'memory'
 
 const TABS: { key: TabKey; label: string; Icon: any }[] = [
   { key: 'chat', label: 'Chat', Icon: MessageSquare },
-  { key: 'mission', label: 'Mission', Icon: Sparkles },
+  { key: 'mission', label: 'Build', Icon: Sparkles },
   { key: 'code', label: 'Code', Icon: Code },
   { key: 'network', label: 'Net', Icon: Globe },
   { key: 'files', label: 'Files', Icon: Folder },

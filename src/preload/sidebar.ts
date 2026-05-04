@@ -100,6 +100,17 @@ const workbenchAPI = {
     ipcRenderer.invoke(Channels.NetExtractCsv, { id, filename, projectId }),
   replayNetwork: (id: string) => ipcRenderer.invoke(Channels.NetReplay, { id }),
 
+  // Build (universal extension maker)
+  getFeatureSpec: (opts?: {
+    tabId?: string;
+    originFilter?: string;
+    maxEndpoints?: number;
+  }) => ipcRenderer.invoke(Channels.FeatureGetSpec, opts ?? {}),
+  buildFeature: (prompt: string, tabId?: string) =>
+    ipcRenderer.invoke(Channels.FeatureBuild, { prompt, tabId }),
+  runFeature: (code: string, tabId?: string, timeoutMs?: number) =>
+    ipcRenderer.invoke(Channels.FeatureRun, { code, tabId, timeoutMs }),
+
   // Memory
   getMemory: (domain: string) => ipcRenderer.invoke(Channels.MemoryGet, { domain }),
   setMemory: (domain: string, updates: any[]) =>

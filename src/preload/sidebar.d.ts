@@ -9,6 +9,8 @@ import type {
   CodeRunResult,
   CodeOutputChunk,
   MemoryUpdate,
+  EndpointSpec,
+  BuiltFeature,
 } from "../common/types";
 
 interface ChatRequest {
@@ -101,6 +103,23 @@ interface WorkbenchAPI {
   replayNetwork: (
     id: string,
   ) => Promise<{ ok: boolean; status?: number; body?: string; error?: string }>;
+
+  // Build (universal extension maker)
+  getFeatureSpec: (opts?: {
+    tabId?: string;
+    originFilter?: string;
+    maxEndpoints?: number;
+  }) => Promise<{
+    tabId: string | null;
+    origin: string | null;
+    endpoints: EndpointSpec[];
+  }>;
+  buildFeature: (prompt: string, tabId?: string) => Promise<BuiltFeature>;
+  runFeature: (
+    code: string,
+    tabId?: string,
+    timeoutMs?: number,
+  ) => Promise<{ ok: true; value: unknown } | { ok: false; error: string }>;
 
   // Memory
   getMemory: (domain: string) => Promise<SiteMemory>;

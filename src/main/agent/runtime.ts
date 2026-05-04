@@ -26,6 +26,7 @@ import {
 } from "../cdp/actions";
 import { highlight } from "../cdp/overlay";
 import { networkCapture } from "../cdp/network";
+import { buildApiSpec, renderApiSpec } from "../cdp/spec";
 import { runPython } from "../code/pyodide-host";
 import {
   addFile,
@@ -545,6 +546,23 @@ severity guide:
     const url = wc.getURL();
     const domain = await this.resolveCurrentDomain(wc);
     const memory = domain ? getSiteMemory(domain) : null;
+    // Build a compact API spec digest so the agent knows which JSON endpoints
+    // the page exposes without having to manually probe extractFromNetwork.
+    let origin: string | null = null;
+    try {
+      origin = url ? new URL(url).origin : null;
+    } catch {
+      origin = null;
+    }
+    const apiSpec = buildApiSpec({
+      tabId: req.tabId,
+      originFilter: origin ?? undefined,
+      maxEndpoints: 30,
+    });
+    const apiSpecBlock =
+      apiSpec.length > 0
+        ? `\n# Captured API spec for ${origin ?? "this page"}\nThe user has interacted with the page; we sniffed XHR/fetch traffic and inferred each JSON endpoint's shape. Sensitive header VALUES are redacted; the names tell you what auth model the endpoint uses. Use these directly via fetch with credentials:'include' (cookies travel automatically) instead of probing the page.\n\n${renderApiSpec(apiSpec, 3000)}\n`
+        : "";
 
     const memoryBlock = memory
       ? [
@@ -567,6 +585,7 @@ severity guide:
 
 Active URL: ${url}
 ${memoryBlock}
+${apiSpecBlock}
 
 Operating rules:
 - Take ONE action per step. After each tool call you'll see the result.

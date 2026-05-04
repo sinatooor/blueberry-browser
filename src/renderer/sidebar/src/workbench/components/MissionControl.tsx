@@ -15,6 +15,7 @@ import {
 import { useWorkbench } from '../contexts/WorkbenchContext'
 import type { AgentStep, RiskLevel, StepStatus } from '../../../../../common/types'
 import { cn } from '@common/lib/utils'
+import { BuildComposer } from './BuildComposer'
 
 const RiskBadge: React.FC<{ level: RiskLevel }> = ({ level }) => {
   const cls = {
@@ -314,41 +315,44 @@ export const MissionControl: React.FC = () => {
   const { steps, currentRun } = useWorkbench()
   return (
     <div className="flex flex-col h-full">
-      <div className="px-4 py-3 border-b border-border">
-        <div className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-          <Sparkles className="size-3.5 text-primary" />
-          Mission Control
-        </div>
-        <div className="text-[12px] text-muted-foreground/80 mt-1 font-serif italic">
-          Every action the agent takes, in order — with rationale, screenshots, and
-          approval gates for anything destructive.
-        </div>
-      </div>
+      <div className="flex-1 overflow-y-auto">
+        <BuildComposer />
 
-      <div className="flex-1 overflow-y-auto px-2 py-2">
-        {steps.length === 0 ? (
-          <div className="px-4 py-12 text-center">
-            {currentRun?.status === 'planning' ? (
-              <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="size-3.5 animate-spin" /> Planning the first step…
-              </span>
-            ) : (
-              <div className="space-y-2">
-                <Sparkles className="size-7 mx-auto text-muted-foreground/40" />
-                <div className="text-xs text-muted-foreground font-serif italic max-w-xs mx-auto">
-                  Describe a task below — the agent will break it into steps and run them
-                  here, transparently.
+        <div className="px-4 py-3 border-b border-border">
+          <div className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            <Sparkles className="size-3.5 text-primary" />
+            Agent timeline
+          </div>
+          <div className="text-[12px] text-muted-foreground/80 mt-1 font-serif italic">
+            Multi-step agent runs — every action with rationale, screenshots, and approval
+            gates for anything destructive.
+          </div>
+        </div>
+
+        <div className="px-2 py-2">
+          {steps.length === 0 ? (
+            <div className="px-4 py-8 text-center">
+              {currentRun?.status === 'planning' ? (
+                <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="size-3.5 animate-spin" /> Planning the first step…
+                </span>
+              ) : (
+                <div className="space-y-2">
+                  <Sparkles className="size-7 mx-auto text-muted-foreground/40" />
+                  <div className="text-xs text-muted-foreground font-serif italic max-w-xs mx-auto">
+                    Or describe a multi-step task below to launch the agent.
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-0.5">
-            {steps.map((s, i) => (
-              <StepRow key={s.id} step={s} isLast={i === steps.length - 1} />
-            ))}
-          </div>
-        )}
+              )}
+            </div>
+          ) : (
+            <div className="space-y-0.5">
+              {steps.map((s, i) => (
+                <StepRow key={s.id} step={s} isLast={i === steps.length - 1} />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <ControlBar />
