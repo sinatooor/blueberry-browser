@@ -48,31 +48,46 @@ const StatusGlyph: React.FC<{ status: StepStatus }> = ({ status }) => {
   return <span className={cn(base, 'bg-border-strong')} />
 }
 
+// Emojis surface what the agent is touching at a glance:
+// 📁 a project folder, 📄 a file in the sandbox, 🌐 navigation, 📡 the network,
+// 🖱️/⌨️/🖲️ input, 🐍/📜 code, 🧠 memory, ⏳ wait, ✅ finish.
 function actionLabel(step: AgentStep): string {
   const a = step.action
   switch (a.type) {
     case 'click':
-      return `click ${a.selector}`
+      return `🖱️ click ${a.selector}`
     case 'type':
-      return `type into ${a.selector}: "${a.text.slice(0, 40)}"`
+      return `⌨️ type into ${a.selector}: "${a.text.slice(0, 40)}"`
     case 'scroll':
-      return `scroll ${a.direction} ${a.px}px`
+      return `🖲️ scroll ${a.direction} ${a.px}px`
     case 'navigate':
-      return `navigate ${a.url}`
+      return `🌐 navigate ${a.url}`
     case 'wait':
-      return a.forSelector ? `wait for ${a.forSelector}` : `wait ${a.ms}ms`
+      return a.forSelector ? `⏳ wait for ${a.forSelector}` : `⏳ wait ${a.ms}ms`
     case 'extract':
       return a.source === 'network'
-        ? `extract network "${a.networkUrl}" → files/${a.into}`
-        : `extract ${a.selector} → files/${a.into}`
+        ? `📡 extract network "${a.networkUrl}" → 📁 files/📄 ${a.into}`
+        : `📋 extract ${a.selector} → 📁 files/📄 ${a.into}`
     case 'writeFile':
-      return `write files/${a.path}`
+      return `📝 write 📁 files/📄 ${a.path}`
     case 'runCode':
-      return `run python (${a.source.length} chars)`
+      return `🐍 run python (${a.source.length} chars)`
+    case 'evalJs':
+      return `📜 evalJs in page (${a.source.length} chars)`
+    case 'inspectPage':
+      return `🔍 inspect page structure`
+    case 'verifyOverlay':
+      return `📐 verify placement of ${a.selector}`
+    case 'verifyVisually':
+      return `👁️ visual check: "${a.intent.slice(0, 60)}"`
+    case 'saveAugmentation':
+      return `💾 save augmentation "${a.name}" (#${a.id})`
+    case 'removeAugmentation':
+      return `🗑️ remove augmentation #${a.id}`
     case 'saveMemory':
-      return `propose ${a.updates.length} memory updates`
+      return `🧠 propose ${a.updates.length} memory updates`
     case 'finish':
-      return `finish: ${a.summary.slice(0, 80)}`
+      return `✅ finish: ${a.summary.slice(0, 80)}`
     default:
       return JSON.stringify(a)
   }

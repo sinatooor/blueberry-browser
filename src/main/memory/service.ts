@@ -1,6 +1,6 @@
 import { parse as parseTld } from "tldts";
 import { getSiteMemory, setSiteMemory, deleteSiteMemory } from "../projects/store";
-import type { MemoryUpdate, SiteMemory } from "../../common/types";
+import type { MemoryUpdate, SiteAugmentation, SiteMemory } from "../../common/types";
 
 export function domainFor(url: string): string | null {
   try {
@@ -18,12 +18,20 @@ function emptyMemory(domain: string): SiteMemory {
     selectors: [],
     glossary: [],
     preferences: {},
+    augmentations: [],
     updatedAt: Date.now(),
   };
 }
 
 export function getMemory(domain: string): SiteMemory {
-  return getSiteMemory(domain) ?? emptyMemory(domain);
+  const mem = getSiteMemory(domain) ?? emptyMemory(domain);
+  // Backfill for memories persisted before the augmentations field existed.
+  if (!Array.isArray(mem.augmentations)) mem.augmentations = [];
+  return mem;
+}
+
+export function getAugmentations(domain: string): SiteAugmentation[] {
+  return getMemory(domain).augmentations.filter((a) => a.enabled);
 }
 
 export function applyUpdates(domain: string, updates: MemoryUpdate[]): SiteMemory {
@@ -63,6 +71,33 @@ export function applyUpdates(domain: string, updates: MemoryUpdate[]): SiteMemor
       }
       case "preference": {
         mem.preferences[u.key] = u.value;
+        break;
+      }
+      case "augmentation": {
+        if (!u.id.startsWith("bb-")) {
+          // Reject anything that isn't bb-* prefixed — replay must be
+          // attributable to us, and the agent's idempotent guards rely on it.
+          break;
+        }
+        const existing = mem.augmentations.find((a) => a.id === u.id);
+        if (existing) {
+          existing.name = u.name;
+          existing.script = u.script;
+          existing.enabled = true;
+          existing.addedAt = Date.now();
+        } else {
+          mem.augmentations.push({
+            id: u.id,
+            name: u.name,
+            script: u.script,
+            addedAt: Date.now(),
+            enabled: true,
+          });
+        }
+        break;
+      }
+      case "removeAugmentation": {
+        mem.augmentations = mem.augmentations.filter((a) => a.id !== u.id);
         break;
       }
     }

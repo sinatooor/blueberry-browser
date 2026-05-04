@@ -19,6 +19,12 @@ export type AgentAction =
   | { type: "wait"; forSelector?: string; ms?: number }
   | { type: "extract"; selector?: string; into: string; source?: "dom" | "network"; networkUrl?: string }
   | { type: "runCode"; language: "python"; source: string; saveAs?: string }
+  | { type: "evalJs"; source: string; awaitPromise?: boolean }
+  | { type: "inspectPage" }
+  | { type: "verifyOverlay"; selector: string }
+  | { type: "verifyVisually"; selector?: string; intent: string }
+  | { type: "saveAugmentation"; id: string; name: string; script: string }
+  | { type: "removeAugmentation"; id: string }
   | { type: "http"; method: "GET"; url: string; headers?: Record<string, string> }
   | { type: "writeFile"; path: string; content: string }
   | { type: "saveMemory"; updates: MemoryUpdate[] }
@@ -98,12 +104,25 @@ export type NetRequest = {
   ts: number;
 };
 
+export type SiteAugmentation = {
+  // bb-prefixed root id of the injected element. Required for auto-replay
+  // idempotency and for `removeAugmentation` to clean up.
+  id: string;
+  name: string;
+  // The evalJs source. Re-executed on every page load on this domain unless
+  // `enabled` is false.
+  script: string;
+  addedAt: number;
+  enabled: boolean;
+};
+
 export type SiteMemory = {
   domain: string;
   procedures: { name: string; steps: string[]; lastVerified: number }[];
   selectors: { intent: string; selector: string; lastSeenAt: number; stale?: boolean }[];
   glossary: { term: string; definition: string }[];
   preferences: Record<string, unknown>;
+  augmentations: SiteAugmentation[];
   updatedAt: number;
 };
 
@@ -111,7 +130,9 @@ export type MemoryUpdate =
   | { kind: "procedure"; name: string; steps: string[] }
   | { kind: "selector"; intent: string; selector: string }
   | { kind: "glossary"; term: string; definition: string }
-  | { kind: "preference"; key: string; value: unknown };
+  | { kind: "preference"; key: string; value: unknown }
+  | { kind: "augmentation"; id: string; name: string; script: string }
+  | { kind: "removeAugmentation"; id: string };
 
 export type CodeOutputChunk =
   | { kind: "stdout"; text: string }

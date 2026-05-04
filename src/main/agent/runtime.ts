@@ -1,4 +1,6 @@
 import { generateText, type ModelMessage } from "ai";
+import { inspectPage as cdpInspectPage, checkOverlay, summarizeSurvey } from "../cdp/inspect";
+import { applyUpdates as applyMemoryUpdates } from "../memory/service";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { nanoid } from "nanoid";
@@ -20,6 +22,7 @@ import {
   waitForSelector,
   screenshot,
   extractText as extractDomText,
+  evalJs,
 } from "../cdp/actions";
 import { highlight } from "../cdp/overlay";
 import { networkCapture } from "../cdp/network";
@@ -64,8 +67,8 @@ type RunHandle = {
   paused: boolean;
 };
 
-const STEPS_HARD_CAP = 20;
-const WALL_CLOCK_MS = 120_000;
+const STEPS_HARD_CAP = 30;
+const WALL_CLOCK_MS = 180_000;
 
 export class AgentRuntime {
   private runs = new Map<string, RunHandle>();
@@ -93,6 +96,80 @@ export class AgentRuntime {
       return anthropic(process.env.LLM_MODEL || "claude-sonnet-4-6");
     }
     return openai(process.env.LLM_MODEL || "gpt-4o-mini");
+  }
+
+  // Vision-based verification that an evalJs change rendered as the user wanted.
+  // Uses the same provider the agent uses; the multimodal models we default to
+  // (gpt-4o-mini, claude-sonnet-4-6) both accept images natively.
+  private async runVisualVerify(
+    intent: string,
+    selector: string | undefined,
+    screenshotPath: string,
+  ): Promise<{ severity: "ok" | "minor" | "major" | "broken"; issues: string[]; advice: string }> {
+    let buf: Buffer;
+    try {
+      buf = fs.readFileSync(screenshotPath);
+    } catch (e) {
+      return {
+        severity: "broken",
+        issues: [`Could not read screenshot: ${(e as Error).message}`],
+        advice: "Re-run the action and try again.",
+      };
+    }
+
+    const sys = `You are a UI QA reviewer. Inspect the screenshot of a web page and judge whether the user's intent has been satisfied. Look for: missing element, element clipped or off-screen, element overlapping the site's existing chrome (header, nav, footer, sticky widgets) in a way that hides them, illegible color/contrast, broken layout. Reply with STRICT JSON only — no prose, no code fences:
+
+{"severity": "ok" | "minor" | "major" | "broken", "issues": ["..."], "advice": "one short sentence on how to fix, or empty if ok"}
+
+severity guide:
+- "ok": looks correct, fits the page
+- "minor": cosmetic issue (slight contrast, small clip)
+- "major": noticeable overlap with existing UI or wrong placement
+- "broken": element is missing, completely hidden, or page looks broken`;
+
+    const userText =
+      `Intent: ${intent}` +
+      (selector ? `\nSelector under review: ${selector}` : "") +
+      `\n\nReview the screenshot and reply with the JSON verdict.`;
+
+    try {
+      const turn = await generateText({
+        model: this.getModel(),
+        system: sys,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: userText },
+              { type: "image", image: buf, mediaType: "image/png" },
+            ],
+          },
+        ],
+      });
+      const text = turn.text?.trim() ?? "";
+      // Be tolerant of accidental code fences.
+      const jsonStart = text.indexOf("{");
+      const jsonEnd = text.lastIndexOf("}");
+      if (jsonStart === -1 || jsonEnd === -1) {
+        return { severity: "minor", issues: ["Verifier returned non-JSON"], advice: text.slice(0, 120) };
+      }
+      const parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1)) as {
+        severity?: "ok" | "minor" | "major" | "broken";
+        issues?: string[];
+        advice?: string;
+      };
+      return {
+        severity: parsed.severity ?? "minor",
+        issues: Array.isArray(parsed.issues) ? parsed.issues.slice(0, 6) : [],
+        advice: typeof parsed.advice === "string" ? parsed.advice.slice(0, 280) : "",
+      };
+    } catch (e) {
+      return {
+        severity: "minor",
+        issues: [`Visual verifier call failed: ${(e as Error).message}`],
+        advice: "Continue without visual verification.",
+      };
+    }
   }
 
   private async resolveCurrentDomain(wc: WebContents | null): Promise<string | undefined> {
@@ -324,6 +401,120 @@ export class AgentRuntime {
           output: textOut.slice(0, 1500),
         };
       }
+      case "inspectPage": {
+        const r = await cdpInspectPage(wc);
+        if (!r.ok) return { ok: false, error: r.error };
+        const s = r.survey;
+        const summary =
+          `Surveyed ${s.theme.apparentTheme} site — ${s.viewport.width}×${s.viewport.height}, ` +
+          `${s.fixedRegions.length} fixed region(s), maxZ=${s.maxZIndex}, ` +
+          `${s.existingInjected.length} prior bb-* node(s)` +
+          (s.settleTimedOut ? " ⚠️ DOM still mutating" : "");
+        // Send the agent the dense plain-text digest, not the raw 3KB JSON,
+        // so it survives the 1500-char message-history truncator.
+        return {
+          ok: true,
+          summary,
+          output: summarizeSurvey(s),
+        };
+      }
+      case "verifyOverlay": {
+        const r = await checkOverlay(wc, action.selector);
+        if (!r.ok) return { ok: false, error: r.error };
+        const c = r.check;
+        if (!c.found) {
+          return {
+            ok: false,
+            error: `Selector ${action.selector} not found — your evalJs likely didn't insert it (or used a different id/class).`,
+          };
+        }
+        const conflicts = c.conflicts ?? [];
+        const blocking = conflicts.filter((x) => !x.weAreOnTop);
+        const summary = blocking.length
+          ? `OVERLAP: ${action.selector} is behind ${blocking.length} fixed element(s) — fix z-index or move it`
+          : conflicts.length
+            ? `Placement OK (${conflicts.length} overlap on top, fine), bbox ${c.bbox?.width}×${c.bbox?.height}`
+            : `Clean placement — no fixed-element collisions, bbox ${c.bbox?.width}×${c.bbox?.height}`;
+        return {
+          ok: true,
+          summary,
+          output: JSON.stringify(c),
+        };
+      }
+      case "verifyVisually": {
+        const shot = await screenshot(
+          wc,
+          projectScreenshotsDir(projectId),
+          `verify_${String(step.index).padStart(3, "0")}`,
+        );
+        if (!shot.ok) return { ok: false, error: `Could not capture screenshot: ${shot.error}` };
+        const verdict = await this.runVisualVerify(action.intent, action.selector, shot.path);
+        const sev = verdict.severity ?? "ok";
+        const summary =
+          sev === "ok"
+            ? `Visual check OK — "${action.intent.slice(0, 60)}"`
+            : `Visual ${sev}: ${verdict.issues.slice(0, 2).join("; ").slice(0, 140)}`;
+        return {
+          ok: sev !== "broken",
+          summary,
+          output: JSON.stringify(verdict),
+        };
+      }
+      case "evalJs": {
+        const r = await evalJs(wc, action.source, action.awaitPromise ?? true);
+        if (!r.ok) return { ok: false, error: r.error };
+        let preview: string | undefined;
+        if (r.value !== undefined) {
+          try {
+            preview = JSON.stringify(r.value).slice(0, 1500);
+          } catch {
+            preview = String(r.value).slice(0, 1500);
+          }
+        }
+        return {
+          ok: true,
+          summary: `Ran JS in page (${action.source.length} chars)`,
+          output: preview,
+        };
+      }
+      case "saveAugmentation": {
+        const domain = await this.resolveCurrentDomain(wc);
+        if (!domain) return { ok: false, error: "Could not resolve current domain" };
+        // Augmentations apply directly (no propose-toast flow): the user
+        // already saw the change land in Mission Control + verifyOverlay/Visually.
+        // The Memory panel surfaces them and lets the user delete/disable.
+        applyMemoryUpdates(domain, [
+          { kind: "augmentation", id: action.id, name: action.name, script: action.script },
+        ]);
+        this.send(Channels.EventToast, {
+          kind: "info",
+          title: "Augmentation saved",
+          body: `"${action.name}" will auto-replay on every visit to ${domain}.`,
+        });
+        return {
+          ok: true,
+          summary: `Saved augmentation "${action.name}" (${action.id}) for ${domain}`,
+        };
+      }
+      case "removeAugmentation": {
+        const domain = await this.resolveCurrentDomain(wc);
+        if (!domain) return { ok: false, error: "Could not resolve current domain" };
+        applyMemoryUpdates(domain, [{ kind: "removeAugmentation", id: action.id }]);
+        // Also strip from the live page so the user sees an immediate effect.
+        const removeRes = await evalJs(
+          wc,
+          `const el = document.getElementById(${JSON.stringify(action.id)}); if (el) el.remove();`,
+          true,
+          2000,
+        );
+        const removed = removeRes.ok;
+        return {
+          ok: true,
+          summary: removed
+            ? `Removed augmentation #${action.id} (deleted from page + memory)`
+            : `Removed augmentation #${action.id} from memory (not present on current page)`,
+        };
+      }
       case "saveMemory": {
         const domain = await this.resolveCurrentDomain(wc);
         if (!domain) return { ok: false, error: "Could not resolve current domain" };
@@ -384,6 +575,27 @@ Operating rules:
 - For analysis, generate concise Python (pandas/matplotlib) — plots are auto-captured.
 - Always end with the 'finish' tool, including a 1-2 sentence user-facing summary.
 - Never invent selectors. If you're unsure, use extractText on a broad selector (e.g. 'main', 'body') first, or extractFromNetwork on the most recent matching URL.
+
+Page-augmentation cadence (when the user asks to add/restyle/move UI on the live page):
+1. inspectPage FIRST. The survey is the ground truth — the user's previous answers may be stale. Use:
+   - viewport.width/height — your placement must fit
+   - theme.apparentTheme ('light' | 'dark' | 'mixed') — pick colors that match. If the site is dark, use a dark surface for your overlay; if light, use light. Never hardcode.
+   - theme.backgroundColor / color / fontFamily — actually copy these into the styles you inject so it looks native.
+   - fixedRegions[] — every bbox you must NOT cover. Pick an empty corner.
+   - maxZIndex — set your z-index to (maxZIndex + 10), capped at 2147483640.
+   - existingInjected[] — every prior bb-* element with its bbox. If you're adding a SECOND augmentation, lay it out NEXT TO these, not on top of them.
+   - settleTimedOut — if true, the page is still rendering; wait 1-2s and inspectPage again.
+2. evalJs to make the change. Hard rules:
+   - Prefix EVERY id you create with 'bb-' (e.g. 'bb-theme-toggle', 'bb-translate-btn').
+   - Idempotent: \`if (document.getElementById('bb-…')) return;\` early-out so re-runs and replays are safe.
+   - Scope CSS: only style your bb-* ids. Never edit existing site rules.
+   - Detect current state from the page (e.g. document.documentElement.classList) before assuming light/dark.
+3. verifyOverlay with the selector you just created. If conflicts.length > 0 with weAreOnTop=false, fix the placement (don't add a second copy — re-run evalJs that re-positions the existing element by id).
+4. (Optional) verifyVisually for tasks where the user asked for something specific.
+5. saveAugmentation when the change is correct AND user-facing (a button, a panel, a re-style). Pass the SAME bb-id, a short human name ('Day/Night Toggle'), and the EXACT script you ran in step 2 — it auto-replays on every future visit to this domain. Do NOT save one-shot operations like 'click X' or 'extract data'.
+6. finish. Tell the user what you added and that it's saved (if you saved it).
+
+For removal/undo prompts: removeAugmentation deletes both the saved memory AND the live element on the page.
 
 Style:
 - Each rationale is ≤ 20 words and explains what THIS step does. The user reads it. No "I will…" filler.
@@ -525,6 +737,13 @@ Style:
       this.writeStep(baseStep);
 
       // Feed result back to the model as a tool message so it can plan the next step.
+      // jsonValueSchema rejects `undefined`, so omit any optional fields that
+      // weren't set rather than including them as `undefined`.
+      const resultValue: { [key: string]: string | boolean } = { ok: result.ok };
+      if (result.summary !== undefined) resultValue.summary = result.summary;
+      if (result.error !== undefined) resultValue.error = result.error;
+      if (result.output !== undefined) resultValue.output = result.output.slice(0, 1500);
+
       messages.push({
         role: "assistant",
         content: [{ type: "tool-call", toolCallId: stepId, toolName: toolName!, input: toolArgs }],
@@ -536,15 +755,7 @@ Style:
             type: "tool-result",
             toolCallId: stepId,
             toolName: toolName!,
-            output: {
-              type: "json",
-              value: {
-                ok: result.ok,
-                summary: result.summary,
-                error: result.error,
-                output: result.output?.slice(0, 1500),
-              },
-            },
+            output: { type: "json", value: resultValue },
           },
         ],
       });

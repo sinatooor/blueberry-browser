@@ -53,14 +53,44 @@ export function classifyAction(
       }
       return { level: "safe", reason: "" };
     }
+    case "evalJs": {
+      const src = action.source;
+      // Anything that exfiltrates / sends data off-page or wipes auth state
+      // demands an explicit user OK.
+      if (
+        /\bfetch\s*\(|XMLHttpRequest|navigator\.sendBeacon|new\s+WebSocket\b/.test(src) ||
+        /document\.cookie\s*=|localStorage\.clear\s*\(|sessionStorage\.clear\s*\(/.test(src) ||
+        /\b(window\.location|location\.href|location\.assign|location\.replace)\s*=/.test(src)
+      ) {
+        return {
+          level: "destructive",
+          reason: "Script makes a network call, navigates away, or wipes auth state",
+        };
+      }
+      // DOM-only mutations (the day/night-button case) are safe.
+      return { level: "safe", reason: "" };
+    }
     case "writeFile":
       return { level: "safe", reason: "" };
     case "extract":
     case "wait":
     case "scroll":
     case "http":
+    case "inspectPage":
+    case "verifyOverlay":
+    case "verifyVisually":
     case "saveMemory":
+    case "removeAugmentation":
     case "finish":
       return { level: "safe", reason: "" };
+    case "saveAugmentation": {
+      // Persisting a script that auto-runs on every visit deserves a heads-up
+      // toast (caution) — but not a blocking modal, since the user just
+      // watched the script land in Mission Control.
+      return {
+        level: "caution",
+        reason: "This script will auto-run on every page load on this domain.",
+      };
+    }
   }
 }

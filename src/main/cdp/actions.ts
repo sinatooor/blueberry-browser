@@ -189,6 +189,48 @@ export async function screenshot(
   }
 }
 
+export async function evalJs(
+  wc: WebContents,
+  source: string,
+  awaitPromise = true,
+  timeoutMs = 8_000,
+): Promise<ActionResult<{ value: unknown }>> {
+  attach(wc);
+  try {
+    type EvalRes = {
+      result: { type: string; value?: unknown; description?: string };
+      exceptionDetails?: {
+        text?: string;
+        exception?: { description?: string; value?: unknown };
+      };
+    };
+    // Wrap user code in an IIFE so they can use top-level `await`, and race
+    // it against a setTimeout reject so a hung script can't block the agent.
+    const expression = `Promise.race([
+      (async () => { ${source}\n })(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("evalJs timed out after ${timeoutMs}ms")), ${timeoutMs}))
+    ])`;
+    const res = await send<EvalRes>(wc, "Runtime.evaluate", {
+      expression,
+      awaitPromise,
+      returnByValue: true,
+      userGesture: true,
+    });
+    if (res.exceptionDetails) {
+      const ex = res.exceptionDetails;
+      const msg =
+        ex.exception?.description ??
+        (typeof ex.exception?.value === "string" ? ex.exception.value : null) ??
+        ex.text ??
+        "JavaScript exception";
+      return { ok: false, error: msg };
+    }
+    return { ok: true, value: res.result?.value };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
 export async function getOuterHtml(wc: WebContents, selector: string): Promise<string | null> {
   const nodeId = await nodeIdForSelector(wc, selector);
   if (!nodeId) return null;

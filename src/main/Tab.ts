@@ -1,5 +1,6 @@
 import { NativeImage, WebContentsView } from "electron";
 import { networkCapture } from "./cdp/network";
+import { domainFor, getAugmentations } from "./memory/service";
 
 export class Tab {
   private webContentsView: WebContentsView;
@@ -52,6 +53,36 @@ export class Tab {
     this.webContentsView.webContents.on("did-navigate-in-page", (_, url) => {
       this._url = url;
     });
+
+    // Auto-replay any saved augmentations for this site once the page is fully
+    // loaded. The user already approved each one when the agent originally
+    // saved it, so this is consent-respecting.
+    this.webContentsView.webContents.on("did-finish-load", () => {
+      void this.replaySavedAugmentations();
+    });
+  }
+
+  private async replaySavedAugmentations(): Promise<void> {
+    try {
+      const url = this.webContentsView.webContents.getURL();
+      const domain = domainFor(url);
+      if (!domain) return;
+      const augmentations = getAugmentations(domain);
+      if (augmentations.length === 0) return;
+      // Run sequentially so later scripts can rely on earlier ones being
+      // present in the DOM. Each script is wrapped in its own try so one
+      // bad augmentation can't stop the rest.
+      for (const aug of augmentations) {
+        const expr = `(async () => { try { ${aug.script}\n } catch (e) { console.warn("[bb] augmentation ${JSON.stringify(aug.id)} failed:", e); } })()`;
+        try {
+          await this.webContentsView.webContents.executeJavaScript(expr, true);
+        } catch (e) {
+          console.warn(`[bb] augmentation ${aug.id} replay failed:`, (e as Error).message);
+        }
+      }
+    } catch (e) {
+      console.warn("[bb] replay scheduling failed:", (e as Error).message);
+    }
   }
 
   // Getters
