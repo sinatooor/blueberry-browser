@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { forwardRef, useRef, useState } from 'react'
 import {
     Sparkles,
     PlaySquare,
@@ -58,45 +58,57 @@ const ModeSwitch: React.FC<ModeSwitchProps> = ({ mode, onChange }) => (
     </div>
 )
 
-const SmallButton: React.FC<{
+interface SmallButtonProps {
     onClick?: () => void
     disabled?: boolean
     title?: string
     danger?: boolean
     children: React.ReactNode
-}> = ({ onClick, disabled, title, danger, children }) => (
-    <button
-        type="button"
-        onClick={onClick}
-        disabled={disabled}
-        title={title}
-        className={cn(
-            'flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded',
-            'border border-border hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed',
-            'leading-tight',
-            danger && 'text-destructive border-destructive/30 hover:bg-destructive/10',
-        )}
-    >
-        {children}
-    </button>
+}
+
+// forwardRef so the APIs button can hand its element to the popover for
+// viewport-anchored fixed positioning.
+const SmallButton = forwardRef<HTMLButtonElement, SmallButtonProps>(
+    ({ onClick, disabled, title, danger, children }, ref) => (
+        <button
+            ref={ref}
+            type="button"
+            onClick={onClick}
+            disabled={disabled}
+            title={title}
+            className={cn(
+                'flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded',
+                'border border-border hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed',
+                'leading-tight',
+                danger && 'text-destructive border-destructive/30 hover:bg-destructive/10',
+            )}
+        >
+            {children}
+        </button>
+    ),
 )
+SmallButton.displayName = 'SmallButton'
 
 const BuildExtras: React.FC<{
     onOpenExtensions: () => void
 }> = ({ onOpenExtensions }) => {
     const [apisOpen, setApisOpen] = useState(false)
+    const apisBtnRef = useRef<HTMLButtonElement>(null)
     return (
         <>
-            <div className="relative">
-                <SmallButton
-                    onClick={() => setApisOpen((v) => !v)}
-                    title="Captured APIs (toggle on/off as LLM context)"
-                >
-                    <Globe className="size-2.5" />
-                    APIs
-                </SmallButton>
-                <APIMenuPopover open={apisOpen} onClose={() => setApisOpen(false)} />
-            </div>
+            <SmallButton
+                ref={apisBtnRef}
+                onClick={() => setApisOpen((v) => !v)}
+                title="Captured APIs (toggle on/off as LLM context)"
+            >
+                <Globe className="size-2.5" />
+                APIs
+            </SmallButton>
+            <APIMenuPopover
+                open={apisOpen}
+                onClose={() => setApisOpen(false)}
+                anchorRef={apisBtnRef}
+            />
             <SmallButton
                 onClick={onOpenExtensions}
                 title="Saved extensions for this site"

@@ -1,4 +1,5 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Plus, BookOpen, ShieldAlert, Pencil } from 'lucide-react'
 import { cn } from '@common/lib/utils'
 import { useApiBank } from '../contexts/ApiBankContext'
@@ -15,7 +16,15 @@ import { useApiBank } from '../contexts/ApiBankContext'
 interface APIMenuPopoverProps {
     open: boolean
     onClose: () => void
+    // Element the popover anchors to. The popover's bottom-right is pinned
+    // 8 px above the anchor's top-right and rendered in a portal at the
+    // document root, so it isn't clipped by any ancestor's overflow:hidden
+    // or max-width container.
+    anchorRef: React.RefObject<HTMLElement | null>
 }
+
+const POPOVER_WIDTH = 320
+const VIEWPORT_MARGIN = 8
 
 const isMutating = (method: string): boolean =>
     ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method.toUpperCase())
@@ -36,15 +45,55 @@ const methodTone = (method: string): string => {
     }
 }
 
-export const APIMenuPopover: React.FC<APIMenuPopoverProps> = ({ open, onClose }) => {
+export const APIMenuPopover: React.FC<APIMenuPopoverProps> = ({
+    open,
+    onClose,
+    anchorRef,
+}) => {
     const { spec, origin, isEnabled, toggleEnabled, openBank } = useApiBank()
     const ref = useRef<HTMLDivElement>(null)
+    const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+
+    // Compute fixed-position coords from the anchor's bounding rect. We pin
+    // the popover's bottom-right corner above the anchor's top-right. If
+    // there isn't enough room to the LEFT of the anchor for the full
+    // POPOVER_WIDTH, we slide it right against the viewport's left margin —
+    // it'll still be visible, just not perfectly right-aligned.
+    useLayoutEffect(() => {
+        if (!open || !anchorRef.current) return
+        const update = (): void => {
+            const r = anchorRef.current!.getBoundingClientRect()
+            const desiredLeft = r.right - POPOVER_WIDTH
+            const left = Math.max(VIEWPORT_MARGIN, desiredLeft)
+            // Keep the right edge inside the viewport too in case anchor is
+            // off-screen-right (defensive — shouldn't happen here).
+            const clampedLeft = Math.min(
+                left,
+                window.innerWidth - POPOVER_WIDTH - VIEWPORT_MARGIN,
+            )
+            setPos({
+                top: r.top - 8, // popover bottom 8 px above anchor top — actual
+                                // top is set with translateY(-100%) below
+                left: Math.max(VIEWPORT_MARGIN, clampedLeft),
+            })
+        }
+        update()
+        window.addEventListener('resize', update)
+        window.addEventListener('scroll', update, true)
+        return () => {
+            window.removeEventListener('resize', update)
+            window.removeEventListener('scroll', update, true)
+        }
+    }, [open, anchorRef])
 
     // Click outside / Esc dismiss.
     useEffect(() => {
         if (!open) return
         const onDoc = (e: MouseEvent): void => {
-            if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+            const t = e.target as Node
+            if (ref.current?.contains(t)) return
+            if (anchorRef.current?.contains(t)) return
+            onClose()
         }
         const onKey = (e: KeyboardEvent): void => {
             if (e.key === 'Escape') onClose()
@@ -59,23 +108,26 @@ export const APIMenuPopover: React.FC<APIMenuPopoverProps> = ({ open, onClose })
             document.removeEventListener('mousedown', onDoc)
             document.removeEventListener('keydown', onKey)
         }
-    }, [open, onClose])
+    }, [open, onClose, anchorRef])
 
-    if (!open) return null
+    if (!open || !pos) return null
 
     const visible = origin
         ? spec.filter((s) => s.origin === origin)
         : []
 
-    return (
+    return createPortal(
         <div
             ref={ref}
+            style={{
+                position: 'fixed',
+                top: pos.top,
+                left: pos.left,
+                width: POPOVER_WIDTH,
+                transform: 'translateY(-100%)', // pin BOTTOM of popover to top
+                zIndex: 9999,
+            }}
             className={cn(
-                // Anchor to the button's right edge so the popover opens
-                // leftward — the APIs button sits in the right half of the
-                // bottom bar; left-aligning would clip it on narrow sidebars.
-                'absolute bottom-full right-0 mb-2 z-50',
-                'w-[320px] max-w-[calc(100vw-2rem)]',
                 'bg-card border border-border rounded-lg shadow-xl overflow-hidden',
                 'animate-fade-in',
             )}
@@ -181,6 +233,7 @@ export const APIMenuPopover: React.FC<APIMenuPopoverProps> = ({ open, onClose })
                     Add API
                 </button>
             </div>
-        </div>
+        </div>,
+        document.body,
     )
 }
