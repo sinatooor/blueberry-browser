@@ -12,6 +12,7 @@ import {
 import { cn } from '@common/lib/utils'
 import { useApiBank, type BankFilter } from '../contexts/ApiBankContext'
 import { EndpointDetail } from './EndpointDetail'
+import { ResizableSplit } from './ResizableSplit'
 import type { EndpointSpec } from '../../../../../common/types'
 
 // Full-overlay page that takes over the sidebar's main content while open.
@@ -238,9 +239,9 @@ export const APIBankPage: React.FC = () => {
                 />
             )}
 
-            {/* List + detail */}
-            <div className="grid grid-rows-[1fr_1fr] flex-1 min-h-0">
-                <div className="overflow-y-auto border-b border-border">
+            {/* List + detail with a draggable height divider. */}
+            <ResizableSplit storageKey="bb:apibank-split">
+                <div className="overflow-y-auto h-full">
                     {filtered.length === 0 ? (
                         <div className="p-8 text-center text-[11px] text-muted-foreground font-serif italic">
                             {bankFilter === 'this-site'
@@ -261,7 +262,7 @@ export const APIBankPage: React.FC = () => {
                         ))
                     )}
                 </div>
-                <div className="overflow-y-auto">
+                <div className="overflow-y-auto h-full">
                     {selected ? (
                         <div className="relative">
                             <button
@@ -281,7 +282,7 @@ export const APIBankPage: React.FC = () => {
                         </div>
                     )}
                 </div>
-            </div>
+            </ResizableSplit>
         </div>
     )
 }
