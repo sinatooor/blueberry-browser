@@ -254,14 +254,16 @@ export function registerWorkbenchIpc(win: Window): void {
 
   // ---- Build (universal extension maker) ----
   // Returns a compact, sanitized spec of the JSON endpoints captured for the
-  // active tab's origin. Used by the Build composer to show the user what's
-  // available before they ask the LLM to build a feature.
+  // active tab. The renderer decides whether to filter by origin — pass an
+  // explicit `originFilter` (or set `onlyActiveOrigin: true`) to scope to
+  // the current site; omit both to receive every origin captured on the tab.
   ipcMain.handle(Channels.FeatureGetSpec, (_e, payload) => {
-    const { tabId, originFilter, maxEndpoints } = z
+    const { tabId, originFilter, maxEndpoints, onlyActiveOrigin } = z
       .object({
         tabId: z.string().optional(),
         originFilter: z.string().optional(),
         maxEndpoints: z.number().int().min(1).max(200).optional(),
+        onlyActiveOrigin: z.boolean().optional(),
       })
       .parse(payload ?? {});
     const tid = tabId ?? win.activeTab?.id;
@@ -273,9 +275,12 @@ export function registerWorkbenchIpc(win: Window): void {
     } catch {
       origin = null;
     }
+    const filter = onlyActiveOrigin
+      ? (origin ?? undefined)
+      : originFilter ?? undefined;
     const endpoints = buildApiSpec({
       tabId: tid,
-      originFilter: originFilter ?? origin ?? undefined,
+      originFilter: filter,
       maxEndpoints,
     });
     return { tabId: tid, origin, endpoints };
@@ -284,11 +289,17 @@ export function registerWorkbenchIpc(win: Window): void {
   // Calls the LLM with the prompt + spec and returns a strict-JSON BuiltFeature
   // with static-analysis warnings appended. Does NOT execute anything — the
   // renderer's ApprovalCard is the gate.
+  //
+  // The renderer can pass an explicit `endpoints` array — when it does, we
+  // use it verbatim instead of auto-fetching from networkCapture. That's
+  // how the API Bank's per-endpoint on/off toggles take effect: the
+  // disabled ones are filtered out renderer-side and never reach the LLM.
   ipcMain.handle(Channels.FeatureBuild, async (_e, payload) => {
-    const { prompt, tabId } = z
+    const { prompt, tabId, endpoints } = z
       .object({
         prompt: z.string().min(1),
         tabId: z.string().optional(),
+        endpoints: z.array(z.any()).optional(),
       })
       .parse(payload);
     const tid = tabId ?? win.activeTab?.id;
@@ -300,11 +311,13 @@ export function registerWorkbenchIpc(win: Window): void {
     } catch {
       origin = null;
     }
-    const spec = buildApiSpec({
-      tabId: tid,
-      originFilter: origin ?? undefined,
-      maxEndpoints: 40,
-    });
+    const spec = endpoints
+      ? (endpoints as Awaited<ReturnType<typeof buildApiSpec>>)
+      : buildApiSpec({
+          tabId: tid,
+          originFilter: origin ?? undefined,
+          maxEndpoints: 40,
+        });
     return await buildFeature({
       prompt,
       pageUrl: url,

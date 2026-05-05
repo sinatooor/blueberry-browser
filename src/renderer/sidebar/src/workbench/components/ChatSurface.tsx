@@ -25,12 +25,10 @@ const PLACEHOLDER: Record<Mode, string> = {
 }
 
 interface ChatSurfaceProps {
-    onOpenAPIs: () => void
     onOpenExtensions: () => void
 }
 
 export const ChatSurface: React.FC<ChatSurfaceProps> = ({
-    onOpenAPIs,
     onOpenExtensions,
 }) => {
     const { events, busy, send, clear } = useThread()
@@ -152,7 +150,6 @@ export const ChatSurface: React.FC<ChatSurfaceProps> = ({
                     <ComposerBottomBar
                         mode={mode}
                         onModeChange={setMode}
-                        onOpenAPIs={onOpenAPIs}
                         onOpenExtensions={onOpenExtensions}
                     />
                 </div>

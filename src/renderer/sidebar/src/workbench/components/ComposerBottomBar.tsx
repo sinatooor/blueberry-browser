@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import {
     Sparkles,
     PlaySquare,
@@ -12,6 +12,7 @@ import {
 import { cn } from '@common/lib/utils'
 import { useWorkbench } from '../contexts/WorkbenchContext'
 import type { Mode } from '../contexts/ThreadContext'
+import { APIMenuPopover } from './APIMenuPopover'
 
 // Compact bar that lives directly below the composer textarea. Always shows
 // the 3-mode pill on the left; mode-specific helper buttons appear on the
@@ -81,23 +82,31 @@ const SmallButton: React.FC<{
 )
 
 const BuildExtras: React.FC<{
-    onOpenAPIs: () => void
     onOpenExtensions: () => void
-}> = ({ onOpenAPIs, onOpenExtensions }) => (
-    <>
-        <SmallButton onClick={onOpenAPIs} title="Captured APIs (toggle on/off as LLM context)">
-            <Globe className="size-2.5" />
-            APIs
-        </SmallButton>
-        <SmallButton
-            onClick={onOpenExtensions}
-            title="Saved extensions for this site"
-        >
-            <Boxes className="size-2.5" />
-            Extensions
-        </SmallButton>
-    </>
-)
+}> = ({ onOpenExtensions }) => {
+    const [apisOpen, setApisOpen] = useState(false)
+    return (
+        <>
+            <div className="relative">
+                <SmallButton
+                    onClick={() => setApisOpen((v) => !v)}
+                    title="Captured APIs (toggle on/off as LLM context)"
+                >
+                    <Globe className="size-2.5" />
+                    APIs
+                </SmallButton>
+                <APIMenuPopover open={apisOpen} onClose={() => setApisOpen(false)} />
+            </div>
+            <SmallButton
+                onClick={onOpenExtensions}
+                title="Saved extensions for this site"
+            >
+                <Boxes className="size-2.5" />
+                Extensions
+            </SmallButton>
+        </>
+    )
+}
 
 const AgentExtras: React.FC = () => {
     const { currentRun, paused, pauseAgent, resumeAgent, cancelAgent } = useWorkbench()
@@ -137,24 +146,19 @@ const AgentExtras: React.FC = () => {
 interface ComposerBottomBarProps {
     mode: Mode
     onModeChange: (m: Mode) => void
-    onOpenAPIs: () => void
     onOpenExtensions: () => void
 }
 
 export const ComposerBottomBar: React.FC<ComposerBottomBarProps> = ({
     mode,
     onModeChange,
-    onOpenAPIs,
     onOpenExtensions,
 }) => (
     <div className="flex items-center gap-1.5 px-1 pt-1.5 flex-wrap">
         <ModeSwitch mode={mode} onChange={onModeChange} />
         <div className="flex items-center gap-1.5">
             {mode === 'build' && (
-                <BuildExtras
-                    onOpenAPIs={onOpenAPIs}
-                    onOpenExtensions={onOpenExtensions}
-                />
+                <BuildExtras onOpenExtensions={onOpenExtensions} />
             )}
             {mode === 'agent' && <AgentExtras />}
             {/* Chat mode: no extras */}

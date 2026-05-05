@@ -2,10 +2,12 @@ import React, { useState } from 'react'
 import { Loader2, SlidersHorizontal } from 'lucide-react'
 import { cn } from '@common/lib/utils'
 import { useWorkbench } from '../contexts/WorkbenchContext'
+import { useApiBank } from '../contexts/ApiBankContext'
 import { ProjectSwitcher } from './ProjectSwitcher'
 import { ApprovalDialog } from './ApprovalDialog'
 import { InspectDrawer, type InspectTab } from './InspectDrawer'
 import { ChatSurface } from './ChatSurface'
+import { APIBankPage } from './APIBankPage'
 
 // MainSurface is the sidebar's outer shell. It owns:
 //   - The project switcher row
@@ -140,6 +142,7 @@ export const MainSurface: React.FC = () => {
     const [inspectInitialTab, setInspectInitialTab] = useState<InspectTab | null>(
         null,
     )
+    const { bankOpen } = useApiBank()
 
     const openInspect = (tab?: InspectTab): void => {
         if (tab) setInspectInitialTab(tab)
@@ -155,11 +158,11 @@ export const MainSurface: React.FC = () => {
                 onToggleInspect={() => setInspectOpen((v) => !v)}
             />
 
-            <div className="flex-1 min-h-0">
-                <ChatSurface
-                    onOpenAPIs={() => openInspect('network')}
-                    onOpenExtensions={() => openInspect('memory')}
-                />
+            <div className="flex-1 min-h-0 relative">
+                <ChatSurface onOpenExtensions={() => openInspect('memory')} />
+                {/* The API Bank overlays the chat surface when opened from
+                    the APIs popover or its "Open API Bank" / "Add API" items. */}
+                {bankOpen && <APIBankPage />}
             </div>
 
             <InspectDrawer

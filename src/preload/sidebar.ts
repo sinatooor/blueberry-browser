@@ -104,10 +104,14 @@ const workbenchAPI = {
   getFeatureSpec: (opts?: {
     tabId?: string;
     originFilter?: string;
+    onlyActiveOrigin?: boolean;
     maxEndpoints?: number;
   }) => ipcRenderer.invoke(Channels.FeatureGetSpec, opts ?? {}),
-  buildFeature: (prompt: string, tabId?: string) =>
-    ipcRenderer.invoke(Channels.FeatureBuild, { prompt, tabId }),
+  buildFeature: (
+    prompt: string,
+    tabId?: string,
+    endpoints?: unknown[],
+  ) => ipcRenderer.invoke(Channels.FeatureBuild, { prompt, tabId, endpoints }),
   runFeature: (code: string, tabId?: string, timeoutMs?: number) =>
     ipcRenderer.invoke(Channels.FeatureRun, { code, tabId, timeoutMs }),
 

@@ -108,13 +108,18 @@ interface WorkbenchAPI {
   getFeatureSpec: (opts?: {
     tabId?: string;
     originFilter?: string;
+    onlyActiveOrigin?: boolean;
     maxEndpoints?: number;
   }) => Promise<{
     tabId: string | null;
     origin: string | null;
     endpoints: EndpointSpec[];
   }>;
-  buildFeature: (prompt: string, tabId?: string) => Promise<BuiltFeature>;
+  buildFeature: (
+    prompt: string,
+    tabId?: string,
+    endpoints?: EndpointSpec[],
+  ) => Promise<BuiltFeature>;
   runFeature: (
     code: string,
     tabId?: string,

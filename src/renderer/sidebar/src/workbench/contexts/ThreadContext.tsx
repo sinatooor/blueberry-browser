@@ -12,6 +12,7 @@ import type {
     BuiltFeature,
 } from '../../../../../common/types'
 import { useWorkbench } from './WorkbenchContext'
+import { useApiBank } from './ApiBankContext'
 
 // One unified thread of events that the chat surface renders top-to-bottom.
 // Every mode (Build · Agent · Chat) writes events into this same list, so the
@@ -84,6 +85,7 @@ export const ThreadProvider: React.FC<{ children: React.ReactNode }> = ({
     children,
 }) => {
     const wb = useWorkbench()
+    const apiBank = useApiBank()
     const [events, setEvents] = useState<ThreadEvent[]>([])
     const [busy, setBusy] = useState(false)
 
@@ -194,9 +196,15 @@ export const ThreadProvider: React.FC<{ children: React.ReactNode }> = ({
                         pushNote('error', 'No active tab', 'Open a tab to capture APIs first.')
                         return
                     }
+                    // Hand the LLM only the spec entries the user has left
+                    // toggled on for the current site. A snapshot is taken
+                    // here so toggles flipped after Send don't change this
+                    // request mid-flight.
+                    const enabled = apiBank.enabledSpec
                     const feature = await window.workbench.buildFeature(
                         trimmed,
                         wb.activeTabId,
+                        enabled,
                     )
                     pushEvent({
                         id: nextId('b'),
@@ -243,7 +251,7 @@ export const ThreadProvider: React.FC<{ children: React.ReactNode }> = ({
                 if (mode !== 'chat') setBusy(false)
             }
         },
-        [pushEvent, pushNote, wb],
+        [pushEvent, pushNote, wb, apiBank],
     )
 
     const runBuiltFeature = useCallback(
