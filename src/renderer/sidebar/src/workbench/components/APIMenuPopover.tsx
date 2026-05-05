@@ -52,29 +52,26 @@ export const APIMenuPopover: React.FC<APIMenuPopoverProps> = ({
 }) => {
     const { spec, origin, isEnabled, toggleEnabled, openBank } = useApiBank()
     const ref = useRef<HTMLDivElement>(null)
-    const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+    const [pos, setPos] = useState<
+        { top: number; left: number; width: number } | null
+    >(null)
 
-    // Compute fixed-position coords from the anchor's bounding rect. We pin
-    // the popover's bottom-right corner above the anchor's top-right. If
-    // there isn't enough room to the LEFT of the anchor for the full
-    // POPOVER_WIDTH, we slide it right against the viewport's left margin —
-    // it'll still be visible, just not perfectly right-aligned.
+    // Position: vertically pinned above the anchor (button), horizontally
+    // centered in the sidebar's viewport — and shrunk if the viewport is
+    // narrower than POPOVER_WIDTH + margins. Centering means the popover
+    // never clips on either edge regardless of where the anchor sits.
     useLayoutEffect(() => {
         if (!open || !anchorRef.current) return
         const update = (): void => {
             const r = anchorRef.current!.getBoundingClientRect()
-            const desiredLeft = r.right - POPOVER_WIDTH
-            const left = Math.max(VIEWPORT_MARGIN, desiredLeft)
-            // Keep the right edge inside the viewport too in case anchor is
-            // off-screen-right (defensive — shouldn't happen here).
-            const clampedLeft = Math.min(
-                left,
-                window.innerWidth - POPOVER_WIDTH - VIEWPORT_MARGIN,
-            )
+            const maxWidth = window.innerWidth - VIEWPORT_MARGIN * 2
+            const width = Math.min(POPOVER_WIDTH, maxWidth)
+            const left = Math.round((window.innerWidth - width) / 2)
             setPos({
-                top: r.top - 8, // popover bottom 8 px above anchor top — actual
-                                // top is set with translateY(-100%) below
-                left: Math.max(VIEWPORT_MARGIN, clampedLeft),
+                top: r.top - 8, // popover's bottom is 8 px above anchor top;
+                                // translateY(-100%) below converts this to "top"
+                left,
+                width,
             })
         }
         update()
@@ -123,7 +120,7 @@ export const APIMenuPopover: React.FC<APIMenuPopoverProps> = ({
                 position: 'fixed',
                 top: pos.top,
                 left: pos.left,
-                width: POPOVER_WIDTH,
+                width: pos.width,
                 transform: 'translateY(-100%)', // pin BOTTOM of popover to top
                 zIndex: 9999,
             }}
