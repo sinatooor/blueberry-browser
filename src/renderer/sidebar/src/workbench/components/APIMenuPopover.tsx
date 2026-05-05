@@ -71,7 +71,10 @@ export const APIMenuPopover: React.FC<APIMenuPopoverProps> = ({ open, onClose })
         <div
             ref={ref}
             className={cn(
-                'absolute bottom-full left-0 mb-2 z-50',
+                // Anchor to the button's right edge so the popover opens
+                // leftward — the APIs button sits in the right half of the
+                // bottom bar; left-aligning would clip it on narrow sidebars.
+                'absolute bottom-full right-0 mb-2 z-50',
                 'w-[320px] max-w-[calc(100vw-2rem)]',
                 'bg-card border border-border rounded-lg shadow-xl overflow-hidden',
                 'animate-fade-in',
