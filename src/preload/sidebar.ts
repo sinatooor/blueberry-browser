@@ -115,6 +115,30 @@ const workbenchAPI = {
   runFeature: (code: string, tabId?: string, timeoutMs?: number) =>
     ipcRenderer.invoke(Channels.FeatureRun, { code, tabId, timeoutMs }),
 
+  // API Bank (cross-session catalog)
+  apiBankList: (opts?: { origin?: string; limit?: number }) =>
+    ipcRenderer.invoke(Channels.ApiBankList, opts ?? {}),
+  apiBankAdd: (args: {
+    origin: string;
+    method: string;
+    pathname: string;
+    url: string;
+    sampleResponse?: string;
+    notes?: string;
+  }) => ipcRenderer.invoke(Channels.ApiBankAdd, args),
+  apiBankRemove: (key: string) =>
+    ipcRenderer.invoke(Channels.ApiBankRemove, { key }),
+  apiBankClearOrigin: (origin: string) =>
+    ipcRenderer.invoke(Channels.ApiBankClearOrigin, { origin }),
+
+  // Extensions (saved per-site augmentations)
+  extensionsList: (domain: string) =>
+    ipcRenderer.invoke(Channels.ExtensionsList, { domain }),
+  extensionsSetEnabled: (domain: string, id: string, enabled: boolean) =>
+    ipcRenderer.invoke(Channels.ExtensionsSetEnabled, { domain, id, enabled }),
+  extensionsRemove: (domain: string, id: string) =>
+    ipcRenderer.invoke(Channels.ExtensionsRemove, { domain, id }),
+
   // Memory
   getMemory: (domain: string) => ipcRenderer.invoke(Channels.MemoryGet, { domain }),
   setMemory: (domain: string, updates: any[]) =>

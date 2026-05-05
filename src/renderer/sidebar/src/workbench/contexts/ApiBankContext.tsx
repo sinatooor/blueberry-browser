@@ -53,6 +53,17 @@ interface ApiBankContextValue {
     // for the active origin. This is what should go to buildFeature.
     enabledSpec: EndpointSpec[]
 
+    // Manual entry / removal in the persistent catalog.
+    addManualApi: (args: {
+        origin: string
+        method: string
+        pathname: string
+        url: string
+        sampleResponse?: string
+        notes?: string
+    }) => Promise<EndpointSpec>
+    removeApiByKey: (key: string) => Promise<void>
+
     // Bank overlay state.
     bankOpen: boolean
     bankSelectedKey: string | null
@@ -127,18 +138,54 @@ export const ApiBankProvider: React.FC<{ children: React.ReactNode }> = ({
     const refresh = useCallback(async () => {
         setRefreshing(true)
         try {
-            // Pull all origins captured on the active tab so the Bank's
-            // "all" filter works; the Build path applies the per-site +
-            // toggle filter explicitly via `enabledSpec`.
-            const res = await window.workbench.getFeatureSpec()
-            setSpec(res.endpoints)
-            setOrigin(res.origin)
+            // Two sources, merged by endpoint key:
+            //   live  — current-tab capture (has fresh response data)
+            //   stored — SQLite catalog across every origin the user has touched
+            // We prefer the live entry when both exist (it has the most recent
+            // counts/headers). Stored entries fill in cross-origin gaps so the
+            // Bank's "All sites" filter actually has something to show.
+            const [liveRes, stored] = await Promise.all([
+                window.workbench.getFeatureSpec(),
+                window.workbench.apiBankList(),
+            ])
+            const merged = new Map<string, EndpointSpec>()
+            for (const s of stored) merged.set(s.key, s)
+            for (const s of liveRes.endpoints) merged.set(s.key, s)
+            const arr = Array.from(merged.values()).sort(
+                (a, b) => b.lastSeen - a.lastSeen,
+            )
+            setSpec(arr)
+            setOrigin(liveRes.origin)
         } catch (err) {
             console.error('[apibank] refresh failed:', err)
         } finally {
             setRefreshing(false)
         }
     }, [])
+
+    const addManualApi = useCallback(
+        async (args: {
+            origin: string
+            method: string
+            pathname: string
+            url: string
+            sampleResponse?: string
+            notes?: string
+        }): Promise<EndpointSpec> => {
+            const created = await window.workbench.apiBankAdd(args)
+            await refresh()
+            return created
+        },
+        [refresh],
+    )
+
+    const removeApiByKey = useCallback(
+        async (key: string): Promise<void> => {
+            await window.workbench.apiBankRemove(key)
+            await refresh()
+        },
+        [refresh],
+    )
 
     useEffect(() => {
         void refresh()
@@ -204,6 +251,8 @@ export const ApiBankProvider: React.FC<{ children: React.ReactNode }> = ({
             toggleEnabled,
             setEnabled,
             enabledSpec,
+            addManualApi,
+            removeApiByKey,
             bankOpen,
             bankSelectedKey,
             bankFilter,
@@ -221,6 +270,8 @@ export const ApiBankProvider: React.FC<{ children: React.ReactNode }> = ({
             toggleEnabled,
             setEnabled,
             enabledSpec,
+            addManualApi,
+            removeApiByKey,
             bankOpen,
             bankSelectedKey,
             bankFilter,

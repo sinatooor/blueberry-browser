@@ -2,6 +2,7 @@ import type { WebContents } from "electron";
 import { nanoid } from "nanoid";
 import { attach, send, onEvent } from "./attach";
 import { persistNetRequest } from "../projects/store";
+import { upsertApiFromRequest } from "../api-bank/store";
 import type { NetRequest } from "../../common/types";
 
 const SENSITIVE_HEADER_PATTERNS = [
@@ -182,6 +183,14 @@ export class NetworkCapture {
       } catch (e) {
         console.warn("[net] persist failed:", (e as Error).message);
       }
+    }
+    // Always upsert into the cross-session API catalog, regardless of
+    // whether a project is active. The Bank's "All sites" filter and the
+    // Build flow's cross-origin awareness both depend on this catalog.
+    try {
+      upsertApiFromRequest(req);
+    } catch (e) {
+      console.warn("[net] upsertApi failed:", (e as Error).message);
     }
     for (const l of this.listeners) l(req);
   }

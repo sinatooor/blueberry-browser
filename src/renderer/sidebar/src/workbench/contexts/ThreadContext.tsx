@@ -206,13 +206,27 @@ export const ThreadProvider: React.FC<{ children: React.ReactNode }> = ({
                         wb.activeTabId,
                         enabled,
                     )
-                    pushEvent({
-                        id: nextId('b'),
-                        kind: 'build',
-                        feature,
-                        runStatus: { kind: 'idle' },
-                        ts: Date.now(),
-                    })
+                    // The LLM picks one of two routes:
+                    //   "answer" — surface as a plain assistant message in the thread
+                    //   "build"  — surface the approval card with code + safety review
+                    if (feature.kind === 'answer') {
+                        pushEvent({
+                            id: nextId('a'),
+                            kind: 'assistant',
+                            text: feature.answer || '(no answer)',
+                            isStreaming: false,
+                            messageId: `build-answer-${Date.now()}`,
+                            ts: Date.now(),
+                        })
+                    } else {
+                        pushEvent({
+                            id: nextId('b'),
+                            kind: 'build',
+                            feature,
+                            runStatus: { kind: 'idle' },
+                            ts: Date.now(),
+                        })
+                    }
                 } else if (mode === 'agent') {
                     if (!wb.activeProject || !wb.activeTabId) {
                         pushNote(

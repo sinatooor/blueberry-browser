@@ -28,6 +28,17 @@ import {
 import { buildApiSpec } from "../cdp/spec";
 import { buildFeature } from "../cdp/feature-builder";
 import { evalJs } from "../cdp/actions";
+import { setActiveProjectIdResolver } from "../cdp/page-bridge";
+import {
+  listApis as listStoredApis,
+  addManualApi,
+  removeApi as removeStoredApi,
+  clearApisForOrigin,
+} from "../api-bank/store";
+import {
+  setAugmentationEnabled,
+  applyUpdates as applyMemoryUpdates,
+} from "../memory/service";
 import {
   getMemory,
   applyUpdates,
@@ -73,6 +84,10 @@ export function registerWorkbenchIpc(win: Window): void {
     return activeProjectId;
   };
   ensureActiveProject();
+
+  // Page bridge needs to know which project to mount in Pyodide for
+  // window.__bb_runPython calls coming from extensions.
+  setActiveProjectIdResolver(() => activeProjectId);
 
   // ---- Projects ----
   ipcMain.handle(Channels.ProjectsList, () => listProjects());
@@ -344,6 +359,78 @@ export function registerWorkbenchIpc(win: Window): void {
     const result = await evalJs(tab.webContents, code, true, timeoutMs ?? 15_000);
     if (!result.ok) return { ok: false, error: result.error };
     return { ok: true, value: result.value };
+  });
+
+  // ---- API Bank (cross-session catalog) ----
+  ipcMain.handle(Channels.ApiBankList, (_e, payload) => {
+    const { origin, limit } = z
+      .object({
+        origin: z.string().optional(),
+        limit: z.number().int().min(1).max(2000).optional(),
+      })
+      .parse(payload ?? {});
+    return listStoredApis({ origin, limit });
+  });
+
+  ipcMain.handle(Channels.ApiBankAdd, (_e, payload) => {
+    const args = z
+      .object({
+        origin: z.string(),
+        method: z.string(),
+        pathname: z.string(),
+        url: z.string(),
+        sampleResponse: z.string().optional(),
+        notes: z.string().optional(),
+      })
+      .parse(payload);
+    return addManualApi(args);
+  });
+
+  ipcMain.handle(Channels.ApiBankRemove, (_e, payload) => {
+    const { key } = z.object({ key: z.string() }).parse(payload);
+    removeStoredApi(key);
+    return { ok: true };
+  });
+
+  ipcMain.handle(Channels.ApiBankClearOrigin, (_e, payload) => {
+    const { origin } = z.object({ origin: z.string() }).parse(payload);
+    clearApisForOrigin(origin);
+    return { ok: true };
+  });
+
+  // ---- Extensions (per-site saved augmentations) ----
+  ipcMain.handle(Channels.ExtensionsList, (_e, payload) => {
+    const { domain } = z.object({ domain: z.string() }).parse(payload);
+    return getMemory(domain).augmentations;
+  });
+
+  ipcMain.handle(Channels.ExtensionsSetEnabled, (_e, payload) => {
+    const { domain, id, enabled } = z
+      .object({
+        domain: z.string(),
+        id: z.string(),
+        enabled: z.boolean(),
+      })
+      .parse(payload);
+    setAugmentationEnabled(domain, id, enabled);
+    return { ok: true };
+  });
+
+  ipcMain.handle(Channels.ExtensionsRemove, (_e, payload) => {
+    const { domain, id } = z
+      .object({ domain: z.string(), id: z.string() })
+      .parse(payload);
+    applyMemoryUpdates(domain, [{ kind: "removeAugmentation", id }]);
+    // Also strip from any active tab. Best-effort.
+    for (const tab of win.allTabs) {
+      void evalJs(
+        tab.webContents,
+        `const el = document.getElementById(${JSON.stringify(id)}); if (el) el.remove();`,
+        true,
+        2000,
+      ).catch(() => undefined);
+    }
+    return { ok: true };
   });
 
   // ---- Memory ----

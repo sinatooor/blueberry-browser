@@ -24,13 +24,7 @@ const PLACEHOLDER: Record<Mode, string> = {
     chat: 'Ask anything about the current page.',
 }
 
-interface ChatSurfaceProps {
-    onOpenExtensions: () => void
-}
-
-export const ChatSurface: React.FC<ChatSurfaceProps> = ({
-    onOpenExtensions,
-}) => {
+export const ChatSurface: React.FC = () => {
     const { events, busy, send, clear } = useThread()
     const [mode, setMode] = useState<Mode>(() => {
         if (typeof window === 'undefined') return 'build'
@@ -63,6 +57,31 @@ export const ChatSurface: React.FC<ChatSurfaceProps> = ({
     useLayoutEffect(() => {
         scrollAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
     }, [events.length, events[events.length - 1]?.id])
+
+    // Listen for cross-component requests to prefill the composer + flip
+    // mode (Extensions popover's "Modify with AI" emits this).
+    useEffect(() => {
+        const onEdit = (e: Event): void => {
+            const detail = (e as CustomEvent).detail as { ext?: { id: string; name: string; script: string } } | null
+            if (!detail?.ext) return
+            const ext = detail.ext
+            setMode('build')
+            setDraft(
+                `Modify the "${ext.name}" extension (id ${ext.id}).\n\n` +
+                `Current script:\n\`\`\`js\n${ext.script}\n\`\`\`\n\n` +
+                `What I want changed: `,
+            )
+            setTimeout(() => {
+                textareaRef.current?.focus()
+                if (textareaRef.current) {
+                    textareaRef.current.selectionStart = textareaRef.current.value.length
+                    textareaRef.current.selectionEnd = textareaRef.current.value.length
+                }
+            }, 30)
+        }
+        window.addEventListener('bb:edit-extension', onEdit)
+        return () => window.removeEventListener('bb:edit-extension', onEdit)
+    }, [])
 
     const submit = useCallback(() => {
         const text = draft.trim()
@@ -147,11 +166,7 @@ export const ChatSurface: React.FC<ChatSurfaceProps> = ({
                             <ArrowUp className="size-4" />
                         </button>
                     </div>
-                    <ComposerBottomBar
-                        mode={mode}
-                        onModeChange={setMode}
-                        onOpenExtensions={onOpenExtensions}
-                    />
+                    <ComposerBottomBar mode={mode} onModeChange={setMode} />
                 </div>
             </div>
         </div>

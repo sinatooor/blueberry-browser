@@ -13,6 +13,7 @@ import { cn } from '@common/lib/utils'
 import { useWorkbench } from '../contexts/WorkbenchContext'
 import type { Mode } from '../contexts/ThreadContext'
 import { APIMenuPopover } from './APIMenuPopover'
+import { ExtensionsMenuPopover } from './ExtensionsMenuPopover'
 
 // Compact bar that lives directly below the composer textarea. Always shows
 // the 3-mode pill on the left; mode-specific helper buttons appear on the
@@ -89,16 +90,19 @@ const SmallButton = forwardRef<HTMLButtonElement, SmallButtonProps>(
 )
 SmallButton.displayName = 'SmallButton'
 
-const BuildExtras: React.FC<{
-    onOpenExtensions: () => void
-}> = ({ onOpenExtensions }) => {
+const BuildExtras: React.FC = () => {
     const [apisOpen, setApisOpen] = useState(false)
+    const [extsOpen, setExtsOpen] = useState(false)
     const apisBtnRef = useRef<HTMLButtonElement>(null)
+    const extsBtnRef = useRef<HTMLButtonElement>(null)
     return (
         <>
             <SmallButton
                 ref={apisBtnRef}
-                onClick={() => setApisOpen((v) => !v)}
+                onClick={() => {
+                    setExtsOpen(false)
+                    setApisOpen((v) => !v)
+                }}
                 title="Captured APIs (toggle on/off as LLM context)"
             >
                 <Globe className="size-2.5" />
@@ -110,12 +114,28 @@ const BuildExtras: React.FC<{
                 anchorRef={apisBtnRef}
             />
             <SmallButton
-                onClick={onOpenExtensions}
-                title="Saved extensions for this site"
+                ref={extsBtnRef}
+                onClick={() => {
+                    setApisOpen(false)
+                    setExtsOpen((v) => !v)
+                }}
+                title="Saved extensions for this site (toggle on/off, modify with AI)"
             >
                 <Boxes className="size-2.5" />
                 Extensions
             </SmallButton>
+            <ExtensionsMenuPopover
+                open={extsOpen}
+                onClose={() => setExtsOpen(false)}
+                anchorRef={extsBtnRef}
+                onModify={(ext) => {
+                    // The ChatSurface listens for this and prefills the
+                    // composer + switches to Build mode.
+                    window.dispatchEvent(
+                        new CustomEvent('bb:edit-extension', { detail: { ext } }),
+                    )
+                }}
+            />
         </>
     )
 }
@@ -158,20 +178,16 @@ const AgentExtras: React.FC = () => {
 interface ComposerBottomBarProps {
     mode: Mode
     onModeChange: (m: Mode) => void
-    onOpenExtensions: () => void
 }
 
 export const ComposerBottomBar: React.FC<ComposerBottomBarProps> = ({
     mode,
     onModeChange,
-    onOpenExtensions,
 }) => (
     <div className="flex items-center gap-1.5 px-1 pt-1.5 flex-wrap">
         <ModeSwitch mode={mode} onChange={onModeChange} />
         <div className="flex items-center gap-1.5">
-            {mode === 'build' && (
-                <BuildExtras onOpenExtensions={onOpenExtensions} />
-            )}
+            {mode === 'build' && <BuildExtras />}
             {mode === 'agent' && <AgentExtras />}
             {/* Chat mode: no extras */}
         </div>

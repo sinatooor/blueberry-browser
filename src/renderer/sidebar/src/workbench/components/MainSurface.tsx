@@ -139,15 +139,8 @@ const TopToolbar: React.FC<{
 
 export const MainSurface: React.FC = () => {
     const [inspectOpen, setInspectOpen] = useState(false)
-    const [inspectInitialTab, setInspectInitialTab] = useState<InspectTab | null>(
-        null,
-    )
+    const [inspectInitialTab] = useState<InspectTab | null>(null)
     const { bankOpen } = useApiBank()
-
-    const openInspect = (tab?: InspectTab): void => {
-        if (tab) setInspectInitialTab(tab)
-        setInspectOpen(true)
-    }
 
     return (
         <div className="relative h-screen flex flex-col bg-background border-l border-border overflow-hidden">
@@ -159,7 +152,7 @@ export const MainSurface: React.FC = () => {
             />
 
             <div className="flex-1 min-h-0 relative">
-                <ChatSurface onOpenExtensions={() => openInspect('memory')} />
+                <ChatSurface />
                 {/* The API Bank overlays the chat surface when opened from
                     the APIs popover or its "Open API Bank" / "Add API" items. */}
                 {bankOpen && <APIBankPage />}
@@ -167,10 +160,7 @@ export const MainSurface: React.FC = () => {
 
             <InspectDrawer
                 open={inspectOpen}
-                onClose={() => {
-                    setInspectOpen(false)
-                    setInspectInitialTab(null)
-                }}
+                onClose={() => setInspectOpen(false)}
                 initialTab={inspectInitialTab ?? undefined}
             />
             <ApprovalDialog />

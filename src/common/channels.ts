@@ -42,6 +42,17 @@ export const Channels = {
   FeatureBuild: "feature:build",
   FeatureRun: "feature:run",
 
+  // Cross-session API catalog ("API Bank")
+  ApiBankList: "apiBank:list",
+  ApiBankAdd: "apiBank:add",
+  ApiBankRemove: "apiBank:remove",
+  ApiBankClearOrigin: "apiBank:clearOrigin",
+
+  // Saved extensions per site (built on top of SiteAugmentation memory)
+  ExtensionsList: "extensions:list",
+  ExtensionsSetEnabled: "extensions:setEnabled",
+  ExtensionsRemove: "extensions:remove",
+
   // Memory
   MemoryGet: "memory:get",
   MemorySet: "memory:set",

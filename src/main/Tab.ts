@@ -1,5 +1,6 @@
 import { NativeImage, WebContentsView } from "electron";
 import { networkCapture } from "./cdp/network";
+import { attachPageBridge } from "./cdp/page-bridge";
 import { domainFor, getAugmentations } from "./memory/service";
 
 export class Tab {
@@ -33,6 +34,15 @@ export class Tab {
       networkCapture.attachToWebContents(this.webContentsView.webContents, this._id);
     } catch (err) {
       console.warn("[tab] network capture attach failed:", (err as Error).message);
+    }
+
+    // Attach the page-side helpers bridge: window.__bb_widget for
+    // floating extension shells and window.__bb_runPython for the code
+    // interpreter. Registered once per WebContents; rearms on navigation.
+    try {
+      attachPageBridge(this.webContentsView.webContents);
+    } catch (err) {
+      console.warn("[tab] page bridge attach failed:", (err as Error).message);
     }
 
     // Load the initial URL

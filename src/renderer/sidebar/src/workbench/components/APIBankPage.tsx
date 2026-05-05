@@ -7,6 +7,7 @@ import {
     Pencil,
     Plus,
     RefreshCw,
+    Trash2,
 } from 'lucide-react'
 import { cn } from '@common/lib/utils'
 import { useApiBank, type BankFilter } from '../contexts/ApiBankContext'
@@ -120,8 +121,11 @@ export const APIBankPage: React.FC = () => {
         bankFilter,
         setBankFilter,
         closeBank,
+        addManualApi,
+        removeApiByKey,
     } = useApiBank()
     const [search, setSearch] = useState('')
+    const [addOpen, setAddOpen] = useState(false)
 
     // Esc dismisses.
     useEffect(() => {
@@ -208,14 +212,31 @@ export const APIBankPage: React.FC = () => {
                 </div>
                 <button
                     type="button"
-                    title="Add API (manual entry — coming soon)"
-                    disabled
-                    className="flex items-center gap-1 text-[10.5px] px-2 py-1 rounded border border-border opacity-40 cursor-not-allowed"
+                    onClick={() => setAddOpen((v) => !v)}
+                    title="Manually add an API (URL + method + sample response)"
+                    className={cn(
+                        'flex items-center gap-1 text-[10.5px] px-2 py-1 rounded border',
+                        addOpen
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'border-border hover:bg-muted',
+                    )}
                 >
                     <Plus className="size-3" />
                     Add API
                 </button>
             </div>
+
+            {addOpen && (
+                <AddApiForm
+                    defaultOrigin={origin ?? ''}
+                    onSubmit={async (args) => {
+                        const created = await addManualApi(args)
+                        setAddOpen(false)
+                        setBankSelected(created.key)
+                    }}
+                    onCancel={() => setAddOpen(false)}
+                />
+            )}
 
             {/* List + detail */}
             <div className="grid grid-rows-[1fr_1fr] flex-1 min-h-0">
@@ -242,13 +263,136 @@ export const APIBankPage: React.FC = () => {
                 </div>
                 <div className="overflow-y-auto">
                     {selected ? (
-                        <EndpointDetail spec={selected} />
+                        <div className="relative">
+                            <button
+                                type="button"
+                                onClick={() => void removeApiByKey(selected.key)}
+                                className="absolute top-2 right-2 z-10 flex items-center gap-1 text-[10px] text-muted-foreground hover:text-destructive px-2 py-0.5 rounded hover:bg-destructive/10"
+                                title="Remove this endpoint from the catalog"
+                            >
+                                <Trash2 className="size-3" />
+                                Remove
+                            </button>
+                            <EndpointDetail spec={selected} />
+                        </div>
                     ) : (
                         <div className="p-8 text-center text-[11px] text-muted-foreground font-serif italic">
                             Select an endpoint to inspect its headers and shape.
                         </div>
                     )}
                 </div>
+            </div>
+        </div>
+    )
+}
+
+interface AddApiFormProps {
+    defaultOrigin: string
+    onSubmit: (args: {
+        origin: string
+        method: string
+        pathname: string
+        url: string
+        sampleResponse?: string
+    }) => Promise<void>
+    onCancel: () => void
+}
+
+const AddApiForm: React.FC<AddApiFormProps> = ({
+    defaultOrigin,
+    onSubmit,
+    onCancel,
+}) => {
+    const [url, setUrl] = useState('')
+    const [method, setMethod] = useState('GET')
+    const [sample, setSample] = useState('')
+    const [busy, setBusy] = useState(false)
+    const [err, setErr] = useState<string | null>(null)
+
+    const handleSubmit = async (): Promise<void> => {
+        setErr(null)
+        let parsed: URL
+        try {
+            parsed = new URL(url)
+        } catch {
+            setErr('Enter a full URL like https://example.com/api/foo')
+            return
+        }
+        setBusy(true)
+        try {
+            await onSubmit({
+                origin: parsed.origin,
+                method,
+                pathname: parsed.pathname,
+                url,
+                sampleResponse: sample.trim() || undefined,
+            })
+            setUrl('')
+            setSample('')
+        } catch (e) {
+            setErr(e instanceof Error ? e.message : String(e))
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    return (
+        <div className="px-3 py-3 border-b border-border bg-card/40 space-y-2">
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+                Add API
+            </div>
+            <div className="text-[10.5px] text-muted-foreground/80">
+                Defaults to{' '}
+                <span className="font-mono">{defaultOrigin || '(no active site)'}</span>.
+                Paste a URL — origin and path are derived from it.
+            </div>
+            <div className="flex gap-1.5">
+                <select
+                    value={method}
+                    onChange={(e) => setMethod(e.target.value)}
+                    className="text-[11px] px-1.5 py-1 rounded border border-border bg-background outline-none font-mono"
+                >
+                    {['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((m) => (
+                        <option key={m} value={m}>
+                            {m}
+                        </option>
+                    ))}
+                </select>
+                <input
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    placeholder={`${defaultOrigin || 'https://example.com'}/api/foo`}
+                    className="flex-1 text-[11px] px-2 py-1 rounded border border-border bg-background outline-none focus:border-primary/30 font-mono"
+                />
+            </div>
+            <textarea
+                value={sample}
+                onChange={(e) => setSample(e.target.value)}
+                placeholder="Optional: paste a sample JSON response so the LLM knows the shape"
+                rows={4}
+                className="w-full text-[10.5px] px-2 py-1 rounded border border-border bg-background outline-none focus:border-primary/30 font-mono resize-y"
+            />
+            {err && (
+                <div className="text-[10.5px] text-destructive bg-destructive/10 border border-destructive/20 rounded p-1.5">
+                    {err}
+                </div>
+            )}
+            <div className="flex gap-1.5 justify-end">
+                <button
+                    type="button"
+                    onClick={onCancel}
+                    className="text-[11px] px-2 py-1 rounded border border-border hover:bg-muted"
+                >
+                    Cancel
+                </button>
+                <button
+                    type="button"
+                    onClick={handleSubmit}
+                    disabled={busy || !url.trim()}
+                    className="text-[11px] px-2 py-1 rounded bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40"
+                >
+                    {busy ? 'Adding…' : 'Add to Bank'}
+                </button>
             </div>
         </div>
     )

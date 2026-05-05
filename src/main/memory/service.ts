@@ -111,6 +111,24 @@ export function clearMemory(domain: string): void {
   deleteSiteMemory(domain);
 }
 
+// User-driven toggles for saved extensions (Site Augmentations). Distinct
+// from `applyUpdates` because the existing kinds always set enabled=true on
+// upsert; the Extensions popover lets the user pause one without losing it.
+export function setAugmentationEnabled(
+  domain: string,
+  id: string,
+  enabled: boolean,
+): SiteMemory {
+  const mem = getMemory(domain);
+  const aug = mem.augmentations.find((a) => a.id === id);
+  if (aug) {
+    aug.enabled = enabled;
+    mem.updatedAt = Date.now();
+    setSiteMemory(mem);
+  }
+  return mem;
+}
+
 // Proposed memory updates — surface to user as a toast for accept/edit/reject
 const proposed = new Map<string, MemoryUpdate[]>();
 

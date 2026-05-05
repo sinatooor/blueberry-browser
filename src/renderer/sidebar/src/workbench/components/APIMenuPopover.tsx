@@ -53,13 +53,14 @@ export const APIMenuPopover: React.FC<APIMenuPopoverProps> = ({
     const { spec, origin, isEnabled, toggleEnabled, openBank } = useApiBank()
     const ref = useRef<HTMLDivElement>(null)
     const [pos, setPos] = useState<
-        { top: number; left: number; width: number } | null
+        { bottom: number; left: number; width: number } | null
     >(null)
 
-    // Position: vertically pinned above the anchor (button), horizontally
-    // centered in the sidebar's viewport — and shrunk if the viewport is
-    // narrower than POPOVER_WIDTH + margins. Centering means the popover
-    // never clips on either edge regardless of where the anchor sits.
+    // Position: pin the popover's BOTTOM 8 px above the anchor button so it
+    // grows upward, then center horizontally in the viewport. We use a real
+    // `bottom` value (not top + translateY) because the fade-in animation
+    // also drives `transform`, and stacking translateY on top of an animated
+    // transform makes the popover land in the wrong spot.
     useLayoutEffect(() => {
         if (!open || !anchorRef.current) return
         const update = (): void => {
@@ -67,12 +68,8 @@ export const APIMenuPopover: React.FC<APIMenuPopoverProps> = ({
             const maxWidth = window.innerWidth - VIEWPORT_MARGIN * 2
             const width = Math.min(POPOVER_WIDTH, maxWidth)
             const left = Math.round((window.innerWidth - width) / 2)
-            setPos({
-                top: r.top - 8, // popover's bottom is 8 px above anchor top;
-                                // translateY(-100%) below converts this to "top"
-                left,
-                width,
-            })
+            const bottom = Math.max(VIEWPORT_MARGIN, window.innerHeight - r.top + 8)
+            setPos({ bottom, left, width })
         }
         update()
         window.addEventListener('resize', update)
@@ -118,10 +115,9 @@ export const APIMenuPopover: React.FC<APIMenuPopoverProps> = ({
             ref={ref}
             style={{
                 position: 'fixed',
-                top: pos.top,
+                bottom: pos.bottom,
                 left: pos.left,
                 width: pos.width,
-                transform: 'translateY(-100%)', // pin BOTTOM of popover to top
                 zIndex: 9999,
             }}
             className={cn(

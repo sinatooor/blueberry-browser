@@ -97,10 +97,23 @@ export function initProjectStore(): Database.Database {
       ts INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS captured_apis (
+      endpoint_key TEXT PRIMARY KEY,
+      origin TEXT NOT NULL,
+      method TEXT NOT NULL,
+      pathname TEXT NOT NULL,
+      spec_json TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'sniffed',
+      first_seen INTEGER NOT NULL,
+      last_seen INTEGER NOT NULL,
+      count INTEGER NOT NULL DEFAULT 1
+    );
+
     CREATE INDEX IF NOT EXISTS idx_files_project ON files(project_id);
     CREATE INDEX IF NOT EXISTS idx_runs_project ON runs(project_id);
     CREATE INDEX IF NOT EXISTS idx_steps_run ON steps(run_id);
     CREATE INDEX IF NOT EXISTS idx_net_tab ON net_requests(tab_id);
+    CREATE INDEX IF NOT EXISTS idx_apis_origin ON captured_apis(origin);
   `);
 
   // Seed Inbox project on first launch
@@ -126,7 +139,7 @@ export function initProjectStore(): Database.Database {
   return db;
 }
 
-function getDb(): Database.Database {
+export function getDb(): Database.Database {
   if (!db) initProjectStore();
   return db!;
 }

@@ -6,6 +6,7 @@ import type {
   AgentStep,
   NetRequest,
   SiteMemory,
+  SiteAugmentation,
   CodeRunResult,
   CodeOutputChunk,
   MemoryUpdate,
@@ -125,6 +126,28 @@ interface WorkbenchAPI {
     tabId?: string,
     timeoutMs?: number,
   ) => Promise<{ ok: true; value: unknown } | { ok: false; error: string }>;
+
+  // API Bank
+  apiBankList: (opts?: { origin?: string; limit?: number }) => Promise<EndpointSpec[]>;
+  apiBankAdd: (args: {
+    origin: string;
+    method: string;
+    pathname: string;
+    url: string;
+    sampleResponse?: string;
+    notes?: string;
+  }) => Promise<EndpointSpec>;
+  apiBankRemove: (key: string) => Promise<{ ok: boolean }>;
+  apiBankClearOrigin: (origin: string) => Promise<{ ok: boolean }>;
+
+  // Extensions
+  extensionsList: (domain: string) => Promise<SiteAugmentation[]>;
+  extensionsSetEnabled: (
+    domain: string,
+    id: string,
+    enabled: boolean,
+  ) => Promise<{ ok: boolean }>;
+  extensionsRemove: (domain: string, id: string) => Promise<{ ok: boolean }>;
 
   // Memory
   getMemory: (domain: string) => Promise<SiteMemory>;

@@ -193,7 +193,13 @@ export type EndpointSpec = {
 // LLM output for the Build flow. Strict-JSON contract — everything in the
 // approval card derives from these fields. `warnings` is appended by the
 // main process after static analysis.
+//
+// `kind` discriminates between the two routes the LLM can take:
+//   - "build": the user wants something done; emit code that we'll review/run.
+//   - "answer": the user asked a question; emit text that just goes in chat.
+// All build-only fields default to safe placeholders when kind is "answer".
 export type BuiltFeature = {
+  kind: "build" | "answer";
   description: string;
   code: string;
   endpoints_used: string[];
@@ -201,5 +207,6 @@ export type BuiltFeature = {
   uses_cookies: boolean;
   mutates_data: boolean;
   ui_changes: string;
+  answer?: string;
   warnings: string[];
 };
