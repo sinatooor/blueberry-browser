@@ -460,17 +460,13 @@ export const BuildComposer: React.FC = () => {
     }, [endpoints.length, origin])
 
     return (
-        <div className="border-b border-border bg-card/40">
-            <div className="px-4 py-3 flex items-center gap-2 border-b border-border">
-                <Wand2 className="size-3.5 text-primary" />
-                <div className="flex-1">
-                    <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                        Build a feature
-                    </div>
-                    <div className="text-[11px] text-muted-foreground/80 mt-0.5 font-serif italic">
-                        Describe what you want — the browser uses sniffed APIs + your cookies to build it.
-                    </div>
-                </div>
+        <div className="bg-card/40">
+            {/* Subtitle + small action bar — the mode pill above already says
+                we're in Build, so we keep this row minimal. */}
+            <div className="px-4 pt-3 pb-2 flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground/80 font-serif italic flex-1">
+                    Describe what you want — the browser uses sniffed APIs + your cookies to build it.
+                </span>
                 <button
                     type="button"
                     onClick={refresh}
