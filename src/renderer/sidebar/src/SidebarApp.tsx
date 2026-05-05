@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react'
-import { ChatProvider } from './contexts/ChatContext'
 import { WorkbenchProvider } from './workbench/contexts/WorkbenchContext'
+import { ThreadProvider } from './workbench/contexts/ThreadContext'
 import { Workbench } from './workbench/components/Workbench'
 import { useDarkMode } from '@common/hooks/useDarkMode'
 
@@ -19,11 +19,13 @@ const SidebarContent: React.FC = () => {
 }
 
 export const SidebarApp: React.FC = () => {
+    // ThreadProvider lives inside WorkbenchProvider because it consumes
+    // workbench state (active tab, agent steps, project) when wiring sends.
     return (
         <WorkbenchProvider>
-            <ChatProvider>
+            <ThreadProvider>
                 <SidebarContent />
-            </ChatProvider>
+            </ThreadProvider>
         </WorkbenchProvider>
     )
 }

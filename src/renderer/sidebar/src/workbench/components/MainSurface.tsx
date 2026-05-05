@@ -1,23 +1,22 @@
-import React, { useEffect, useState } from 'react'
+import React, { useState } from 'react'
 import { Loader2, SlidersHorizontal } from 'lucide-react'
 import { cn } from '@common/lib/utils'
 import { useWorkbench } from '../contexts/WorkbenchContext'
 import { ProjectSwitcher } from './ProjectSwitcher'
 import { ApprovalDialog } from './ApprovalDialog'
-import { ModePill, type Mode } from './ModePill'
-import { InspectDrawer } from './InspectDrawer'
-import { BuildComposer } from './BuildComposer'
-import { AgentPanel } from './AgentPanel'
-import { Chat } from '../../components/Chat'
+import { InspectDrawer, type InspectTab } from './InspectDrawer'
+import { ChatSurface } from './ChatSurface'
 
-// One unified surface that hosts whichever mode the user picked. The old
-// 6-tab TabBar is gone; everything that doesn't belong in the chat-shaped
-// flow (Memory, Files, Network, Code) moved into the Inspect drawer.
+// MainSurface is the sidebar's outer shell. It owns:
+//   - The project switcher row
+//   - The agent run pill (when a run is live)
+//   - A tiny top toolbar with just the Inspect button
+//   - The unified ChatSurface (one thread, mode pill below the input)
+//   - Inspect drawer (overlays from the right when opened)
+//   - The destructive-step approval dialog and toast stack
 //
-// Build is the focus and the default. Agent and Chat are still here and
-// fully functional — just one click away under the mode pill.
-
-const MODE_STORAGE_KEY = 'bb:main-surface:mode'
+// The 6-tab TabBar is gone — modes live below the composer, advanced
+// surfaces (Memory/Files/Network/Code) live in the Inspect drawer.
 
 const RunPill: React.FC = () => {
     const { currentRun, steps } = useWorkbench()
@@ -99,35 +98,22 @@ const Toasts: React.FC = () => {
     )
 }
 
-interface ToolbarProps {
-    mode: Mode
-    onModeChange: (mode: Mode) => void
-    onInspectToggle: () => void
+const TopToolbar: React.FC<{
     inspectOpen: boolean
-}
-
-const Toolbar: React.FC<ToolbarProps> = ({
-    mode,
-    onModeChange,
-    onInspectToggle,
-    inspectOpen,
-}) => {
+    onToggleInspect: () => void
+}> = ({ inspectOpen, onToggleInspect }) => {
     const { network, files, proposedMemory } = useWorkbench()
-    // One badge on Inspect when something inside wants attention. Keeps the
-    // top bar uncluttered compared to the old per-tab badges.
     const inspectBadge: string | null = proposedMemory
         ? '!'
         : network.length + files.length > 0
-            ? null // counts shown inside the drawer; no badge needed for normal state
+            ? null
             : null
 
     return (
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-card/40">
-            <ModePill mode={mode} onChange={onModeChange} />
-            <div className="flex-1" />
+        <div className="flex items-center justify-end gap-2 px-3 py-1.5 border-b border-border bg-card/40">
             <button
                 type="button"
-                onClick={onInspectToggle}
+                onClick={onToggleInspect}
                 aria-pressed={inspectOpen}
                 title="Inspect — Memory · Files · Network · Code"
                 className={cn(
@@ -150,60 +136,39 @@ const Toolbar: React.FC<ToolbarProps> = ({
 }
 
 export const MainSurface: React.FC = () => {
-    const [mode, setMode] = useState<Mode>(() => {
-        if (typeof window === 'undefined') return 'build'
-        const stored = localStorage.getItem(MODE_STORAGE_KEY) as Mode | null
-        return stored === 'build' || stored === 'agent' || stored === 'chat'
-            ? stored
-            : 'build'
-    })
     const [inspectOpen, setInspectOpen] = useState(false)
-    const { currentRun } = useWorkbench()
+    const [inspectInitialTab, setInspectInitialTab] = useState<InspectTab | null>(
+        null,
+    )
 
-    useEffect(() => {
-        try {
-            localStorage.setItem(MODE_STORAGE_KEY, mode)
-        } catch {
-            // ignore
-        }
-    }, [mode])
-
-    // When a multi-step agent run kicks off, jump to Agent mode so the
-    // timeline is visible.
-    useEffect(() => {
-        if (
-            currentRun &&
-            ['running', 'planning', 'awaiting-approval'].includes(currentRun.status)
-        ) {
-            setMode('agent')
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentRun?.id])
+    const openInspect = (tab?: InspectTab): void => {
+        if (tab) setInspectInitialTab(tab)
+        setInspectOpen(true)
+    }
 
     return (
         <div className="relative h-screen flex flex-col bg-background border-l border-border overflow-hidden">
             <ProjectSwitcher />
             <RunPill />
-            <Toolbar
-                mode={mode}
-                onModeChange={setMode}
-                onInspectToggle={() => setInspectOpen((v) => !v)}
+            <TopToolbar
                 inspectOpen={inspectOpen}
+                onToggleInspect={() => setInspectOpen((v) => !v)}
             />
 
             <div className="flex-1 min-h-0">
-                {mode === 'build' && (
-                    <div className="h-full overflow-y-auto">
-                        <BuildComposer />
-                    </div>
-                )}
-                {mode === 'agent' && <AgentPanel />}
-                {mode === 'chat' && <Chat />}
+                <ChatSurface
+                    onOpenAPIs={() => openInspect('network')}
+                    onOpenExtensions={() => openInspect('memory')}
+                />
             </div>
 
             <InspectDrawer
                 open={inspectOpen}
-                onClose={() => setInspectOpen(false)}
+                onClose={() => {
+                    setInspectOpen(false)
+                    setInspectInitialTab(null)
+                }}
+                initialTab={inspectInitialTab ?? undefined}
             />
             <ApprovalDialog />
             <Toasts />

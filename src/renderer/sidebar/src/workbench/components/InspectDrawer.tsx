@@ -27,9 +27,16 @@ const STORAGE_KEY = 'bb:inspect-drawer:tab'
 interface InspectDrawerProps {
     open: boolean
     onClose: () => void
+    // If provided, jumps to this tab when the drawer opens. Lets the chat
+    // surface's "APIs" / "Extensions" buttons land on the right tab.
+    initialTab?: InspectTab
 }
 
-export const InspectDrawer: React.FC<InspectDrawerProps> = ({ open, onClose }) => {
+export const InspectDrawer: React.FC<InspectDrawerProps> = ({
+    open,
+    onClose,
+    initialTab,
+}) => {
     const { network, files, proposedMemory } = useWorkbench()
     const [tab, setTab] = useState<InspectTab>(() => {
         if (typeof window === 'undefined') return 'memory'
@@ -44,6 +51,11 @@ export const InspectDrawer: React.FC<InspectDrawerProps> = ({ open, onClose }) =
             // ignore
         }
     }, [tab])
+
+    // Honor the caller's preferred opening tab the moment the drawer opens.
+    useEffect(() => {
+        if (open && initialTab) setTab(initialTab)
+    }, [open, initialTab])
 
     // Esc closes the drawer.
     useEffect(() => {
