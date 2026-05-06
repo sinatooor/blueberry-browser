@@ -434,7 +434,7 @@ export function registerWorkbenchIpc(win: Window): void {
     return getMemory(domain).augmentations;
   });
 
-  ipcMain.handle(Channels.ExtensionsSetEnabled, (_e, payload) => {
+  ipcMain.handle(Channels.ExtensionsSetEnabled, async (_e, payload) => {
     const { domain, id, enabled } = z
       .object({
         domain: z.string(),
@@ -443,6 +443,32 @@ export function registerWorkbenchIpc(win: Window): void {
       })
       .parse(payload);
     setAugmentationEnabled(domain, id, enabled);
+    // The toggle is "show / hide", not just "remember a flag" — apply the
+    // change to every open tab so the user sees the panel disappear or
+    // reappear immediately. Best-effort across tabs; the script's bb-* id
+    // guard makes re-runs idempotent on tabs where it already mounted.
+    if (!enabled) {
+      for (const tab of win.allTabs) {
+        void evalJs(
+          tab.webContents,
+          `const el = document.getElementById(${JSON.stringify(id)}); if (el) el.remove();`,
+          true,
+          2000,
+        ).catch(() => undefined);
+      }
+    } else {
+      const aug = getMemory(domain).augmentations.find((a) => a.id === id);
+      if (aug) {
+        // JSON.stringify(id) → "bb-foo" (with quotes) — pass as a separate
+        // console.warn arg, never interpolated inside another quoted string.
+        // Bigger timeout because the script's first run typically does a
+        // network fetch + Pyodide call before mounting the widget.
+        const expr = `(async () => { try { ${aug.script}\n } catch (e) { console.warn("[bb] re-enable failed for", ${JSON.stringify(id)}, e); } })()`;
+        for (const tab of win.allTabs) {
+          void evalJs(tab.webContents, expr, true, 30_000).catch(() => undefined);
+        }
+      }
+    }
     return { ok: true };
   });
 

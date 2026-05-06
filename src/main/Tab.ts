@@ -83,7 +83,11 @@ export class Tab {
       // present in the DOM. Each script is wrapped in its own try so one
       // bad augmentation can't stop the rest.
       for (const aug of augmentations) {
-        const expr = `(async () => { try { ${aug.script}\n } catch (e) { console.warn("[bb] augmentation ${JSON.stringify(aug.id)} failed:", e); } })()`;
+        // JSON.stringify(id) emits a quoted JS string literal — pass it as a
+        // separate console.warn arg, NOT interpolated inside another string.
+        // Embedding "..."bb-id"..." parses as a syntax error and silently
+        // killed every auto-replay until this fix landed.
+        const expr = `(async () => { try { ${aug.script}\n } catch (e) { console.warn("[bb] augmentation", ${JSON.stringify(aug.id)}, "failed:", e); } })()`;
         try {
           await this.webContentsView.webContents.executeJavaScript(expr, true);
         } catch (e) {
