@@ -1,5 +1,22 @@
 # Blueberry Workbench
 
+#demo
+<img width="3024" height="1964" alt="image" src="https://github.com/user-attachments/assets/29212bd6-493c-4fd5-8d0d-e065ae796e49" />
+
+
+
+
+https://github.com/user-attachments/assets/3e8a1269-3260-4178-99db-3088f6e3bd2d
+
+
+
+
+
+https://github.com/user-attachments/assets/272ef13d-787c-4c0b-82fb-b1d569505063
+
+
+
+
 > An Electron browser that's also an AI workbench — a transparent **Computer-Use** mission control, a per-project **Code Interpreter** (Pyodide), a **Network Copilot**, smart **Downloads** routing, and **per-site memory**. Built on top of the [`dendrite-systems/blueberry-browser`](https://github.com/dendrite-systems/blueberry-browser) baseline.
 
 This repo is an extension of the original Blueberry challenge. The challenge spec asked for either a Computer-Use framework *or* a Code Interpreter Sandbox — this build ships **both, unified under a single product concept** (the Workbench), because each is half-built without the other:
