@@ -54,7 +54,7 @@ plt.show = _capture_show
       }
 
       async function runOne(req) {
-        const { code, projectFiles, runId } = req;
+        const { code, projectFiles, runId, data } = req;
         await warmup();
 
         try {
@@ -77,6 +77,23 @@ plt.show = _capture_show
         }
 
         await pyodide.runPythonAsync("_PROJECT_OUTPUTS.clear()");
+
+        // Pipe optional structured data in as the `_data` global. Pyodide's
+        // `globals.set` + `toPy` converts JS objects/arrays to Python dicts
+        // and lists directly, so the user code can do `_data["events"]`
+        // without ever seeing a JSON string.
+        try {
+          if (data === null || data === undefined) {
+            pyodide.globals.set("_data", null);
+          } else {
+            pyodide.globals.set("_data", pyodide.toPy(data));
+          }
+        } catch (e) {
+          bridge.send("pyodide:output", {
+            runId,
+            chunk: { kind: "stderr", text: "data injection error: " + e.message },
+          });
+        }
 
         const t0 = Date.now();
         let ok = true;

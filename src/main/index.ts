@@ -8,6 +8,7 @@ import { registerWorkbenchIpc, getActiveProjectId } from "./ipc/handlers";
 import { attachDownloadRouter, bindDownloadRouter } from "./downloads/router";
 import { createPyodideHost, warmupPyodide } from "./code/pyodide-host";
 import { networkCapture } from "./cdp/network";
+import { backfillApiNames } from "./api-bank/store";
 
 let mainWindow: Window | null = null;
 let eventManager: EventManager | null = null;
@@ -55,6 +56,13 @@ app.whenReady().then(() => {
   setTimeout(() => {
     void warmupPyodide();
   }, 1200);
+
+  // Catch up any captured endpoints from prior sessions that don't yet
+  // have an LLM-generated short name. Runs after the window is up so
+  // the renderer's onApiNamed listener is wired before names land.
+  setTimeout(() => {
+    backfillApiNames();
+  }, 2500);
 
   app.on("activate", () => {
     // On macOS it's common to re-create a window in the app when the

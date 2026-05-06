@@ -130,6 +130,8 @@ const workbenchAPI = {
     ipcRenderer.invoke(Channels.ApiBankRemove, { key }),
   apiBankClearOrigin: (origin: string) =>
     ipcRenderer.invoke(Channels.ApiBankClearOrigin, { origin }),
+  apiBankRename: (key: string, name: string) =>
+    ipcRenderer.invoke(Channels.ApiBankRename, { key, name }),
 
   // Extensions (saved per-site augmentations)
   extensionsList: (domain: string) =>
@@ -185,6 +187,11 @@ const workbenchAPI = {
     const fn = (_e: unknown, p: any): void => cb(p);
     ipcRenderer.on(Channels.EventToast, fn);
     return () => ipcRenderer.off(Channels.EventToast, fn);
+  },
+  onApiNamed: (cb: (spec: any) => void) => {
+    const fn = (_e: unknown, s: any): void => cb(s);
+    ipcRenderer.on(Channels.EventApiNamed, fn);
+    return () => ipcRenderer.off(Channels.EventApiNamed, fn);
   },
 };
 

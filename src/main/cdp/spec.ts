@@ -16,6 +16,7 @@
 
 import { networkCapture } from "./network";
 import { inferSchema, renderSchema } from "./schema";
+import { listApis } from "../api-bank/store";
 import type { EndpointSpec, NetRequest, SchemaNode } from "../../common/types";
 
 const CSRF_HEADER_HINTS = [/csrf/i, /xsrf/i, /^x-requested-with$/i];
@@ -104,6 +105,25 @@ export function buildApiSpec(opts: BuildSpecOptions): EndpointSpec[] {
   const out = Array.from(groups.values()).sort(
     (a, b) => b.lastSeen - a.lastSeen,
   );
+
+  // Stitch in the LLM-generated short name from the persistent catalog.
+  // The live spec is rebuilt from the in-memory NetworkCapture buffer
+  // every call and never carries a name on its own.
+  if (out.length > 0) {
+    const nameByKey = new Map<string, string>();
+    try {
+      for (const s of listApis({ origin: opts.originFilter, limit: 500 })) {
+        if (s.name) nameByKey.set(s.key, s.name);
+      }
+    } catch {
+      // listApis can fail before initProjectStore has run during boot — ignore.
+    }
+    for (const s of out) {
+      const n = nameByKey.get(s.key);
+      if (n) s.name = n;
+    }
+  }
+
   if (opts.maxEndpoints && out.length > opts.maxEndpoints) {
     return out.slice(0, opts.maxEndpoints);
   }
@@ -156,7 +176,8 @@ function renderEndpoint(s: EndpointSpec): string {
   const queryPart = s.queryKeys.length
     ? `?${s.queryKeys.join("&")}`
     : "";
-  lines.push(`### ${s.method} ${s.pathname}${queryPart}`);
+  const nameSuffix = s.name ? ` — ${s.name}` : "";
+  lines.push(`### ${s.method} ${s.pathname}${queryPart}${nameSuffix}`);
   lines.push(`origin: ${s.origin}`);
   if (s.responseStatus != null) lines.push(`last status: ${s.responseStatus}`);
   if (s.hasAuthHint) {

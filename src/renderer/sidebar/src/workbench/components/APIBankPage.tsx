@@ -89,9 +89,18 @@ const RowItem: React.FC<{
                 {spec.method}
             </span>
             <div className="flex-1 min-w-0">
-                <div className="font-mono text-[11px] truncate">{spec.pathname}</div>
+                <div className="text-[11.5px] font-medium truncate">
+                    {spec.name ?? (
+                        <span className="text-muted-foreground italic font-serif">
+                            naming…
+                        </span>
+                    )}
+                </div>
+                <div className="font-mono text-[10px] text-muted-foreground truncate">
+                    {spec.pathname}
+                </div>
                 {showOrigin && (
-                    <div className="font-mono text-[9.5px] text-muted-foreground truncate">
+                    <div className="font-mono text-[9.5px] text-muted-foreground/70 truncate">
                         {spec.origin}
                     </div>
                 )}

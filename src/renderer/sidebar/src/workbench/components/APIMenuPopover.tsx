@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Plus, BookOpen, ShieldAlert, Pencil } from 'lucide-react'
+import { Plus, BookOpen, ShieldAlert, Pencil, Check, X } from 'lucide-react'
 import { cn } from '@common/lib/utils'
 import { useApiBank } from '../contexts/ApiBankContext'
 
@@ -50,11 +50,15 @@ export const APIMenuPopover: React.FC<APIMenuPopoverProps> = ({
     onClose,
     anchorRef,
 }) => {
-    const { spec, origin, isEnabled, toggleEnabled, openBank } = useApiBank()
+    const { spec, origin, isEnabled, toggleEnabled, renameApi, openBank } =
+        useApiBank()
     const ref = useRef<HTMLDivElement>(null)
     const [pos, setPos] = useState<
         { bottom: number; left: number; width: number } | null
     >(null)
+    const [editing, setEditing] = useState<{ key: string; draft: string } | null>(
+        null,
+    )
 
     // Position: pin the popover's BOTTOM 8 px above the anchor button so it
     // grows upward, then center horizontally in the viewport. We use a real
@@ -110,6 +114,13 @@ export const APIMenuPopover: React.FC<APIMenuPopoverProps> = ({
         ? spec.filter((s) => s.origin === origin)
         : []
 
+    const commitRename = async (): Promise<void> => {
+        if (!editing) return
+        const { key, draft } = editing
+        setEditing(null)
+        await renameApi(key, draft.trim())
+    }
+
     return createPortal(
         <div
             ref={ref}
@@ -143,11 +154,12 @@ export const APIMenuPopover: React.FC<APIMenuPopoverProps> = ({
                 ) : (
                     visible.map((s) => {
                         const enabled = isEnabled(s.origin, s.key)
+                        const isEditing = editing?.key === s.key
                         return (
                             <div
                                 key={s.key}
                                 className={cn(
-                                    'flex items-center gap-2 px-3 py-1.5 hover:bg-muted/50 group',
+                                    'flex items-start gap-2 px-3 py-1.5 hover:bg-muted/50 group',
                                     !enabled && 'opacity-50',
                                 )}
                             >
@@ -161,40 +173,110 @@ export const APIMenuPopover: React.FC<APIMenuPopoverProps> = ({
                                             ? 'Enabled — included in LLM context'
                                             : 'Disabled — hidden from LLM'
                                     }
-                                    className="size-3 cursor-pointer accent-primary shrink-0"
+                                    className="size-3 cursor-pointer accent-primary shrink-0 mt-1"
                                 />
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        openBank(s.key)
-                                        onClose()
-                                    }}
-                                    className="flex-1 min-w-0 text-left flex items-center gap-1.5"
-                                >
-                                    <span
-                                        className={cn(
-                                            'font-mono text-[10px] font-bold w-10 shrink-0',
-                                            methodTone(s.method),
-                                        )}
+                                <div className="flex-1 min-w-0">
+                                    {isEditing ? (
+                                        <div
+                                            className="flex items-center gap-1"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <input
+                                                type="text"
+                                                value={editing!.draft}
+                                                autoFocus
+                                                onChange={(e) =>
+                                                    setEditing({
+                                                        key: s.key,
+                                                        draft: e.target.value,
+                                                    })
+                                                }
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') void commitRename()
+                                                    if (e.key === 'Escape') setEditing(null)
+                                                }}
+                                                placeholder="Short name"
+                                                className="flex-1 min-w-0 text-[11.5px] bg-background border border-border rounded px-1.5 py-0.5 outline-none focus:border-primary"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => void commitRename()}
+                                                title="Save name"
+                                                className="text-success p-0.5 rounded hover:bg-muted"
+                                            >
+                                                <Check className="size-3" />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setEditing(null)}
+                                                title="Cancel"
+                                                className="text-muted-foreground p-0.5 rounded hover:bg-muted"
+                                            >
+                                                <X className="size-3" />
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                openBank(s.key)
+                                                onClose()
+                                            }}
+                                            className="w-full text-left"
+                                        >
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="text-[11.5px] font-medium truncate flex-1">
+                                                    {s.name ?? (
+                                                        <span className="text-muted-foreground italic font-serif">
+                                                            naming…
+                                                        </span>
+                                                    )}
+                                                </span>
+                                                {s.hasCsrfHint && (
+                                                    <ShieldAlert
+                                                        className="size-3 text-warning shrink-0"
+                                                        aria-label="CSRF"
+                                                    />
+                                                )}
+                                                {isMutating(s.method) && (
+                                                    <Pencil
+                                                        className="size-3 text-warning shrink-0"
+                                                        aria-label="Mutating"
+                                                    />
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-1.5 mt-0.5">
+                                                <span
+                                                    className={cn(
+                                                        'font-mono text-[9.5px] font-bold w-9 shrink-0',
+                                                        methodTone(s.method),
+                                                    )}
+                                                >
+                                                    {s.method}
+                                                </span>
+                                                <span className="font-mono text-[10px] text-muted-foreground truncate flex-1">
+                                                    {s.pathname}
+                                                </span>
+                                            </div>
+                                        </button>
+                                    )}
+                                </div>
+                                {!isEditing && (
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.stopPropagation()
+                                            setEditing({
+                                                key: s.key,
+                                                draft: s.name ?? '',
+                                            })
+                                        }}
+                                        title="Rename"
+                                        className="text-muted-foreground hover:text-foreground p-0.5 rounded hover:bg-muted opacity-0 group-hover:opacity-100 mt-0.5"
                                     >
-                                        {s.method}
-                                    </span>
-                                    <span className="font-mono text-[11px] truncate flex-1">
-                                        {s.pathname}
-                                    </span>
-                                    {s.hasCsrfHint && (
-                                        <ShieldAlert
-                                            className="size-3 text-warning shrink-0"
-                                            aria-label="CSRF"
-                                        />
-                                    )}
-                                    {isMutating(s.method) && (
-                                        <Pencil
-                                            className="size-3 text-warning shrink-0"
-                                            aria-label="Mutating"
-                                        />
-                                    )}
-                                </button>
+                                        <Pencil className="size-3" />
+                                    </button>
+                                )}
                             </div>
                         )
                     })

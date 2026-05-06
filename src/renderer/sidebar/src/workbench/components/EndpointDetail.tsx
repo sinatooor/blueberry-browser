@@ -34,6 +34,11 @@ export const EndpointDetail: React.FC<EndpointDetailProps> = ({ spec }) => {
     return (
         <div className="flex flex-col gap-3 p-3 text-[12px]">
             <div>
+                {spec.name && (
+                    <div className="text-[14px] font-semibold leading-tight mb-1">
+                        {spec.name}
+                    </div>
+                )}
                 <div className="flex items-center gap-2 flex-wrap">
                     <span
                         className={cn(

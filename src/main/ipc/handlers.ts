@@ -34,6 +34,8 @@ import {
   addManualApi,
   removeApi as removeStoredApi,
   clearApisForOrigin,
+  renameApi,
+  onApiNamed,
 } from "../api-bank/store";
 import {
   setAugmentationEnabled,
@@ -344,19 +346,23 @@ export function registerWorkbenchIpc(win: Window): void {
   // Approved by the user — run the generated script in the active tab via
   // CDP Runtime.evaluate. The script runs in the page's main world so it
   // inherits cookies and same-origin trust.
+  //
+  // The default timeout is generous (90 s) because feature scripts often
+  // call __bb_runPython, and Pyodide's first run of the session can take
+  // 30+ seconds while it loads numpy/pandas/matplotlib from the CDN.
   ipcMain.handle(Channels.FeatureRun, async (_e, payload) => {
     const { code, tabId, timeoutMs } = z
       .object({
         code: z.string().min(1),
         tabId: z.string().optional(),
-        timeoutMs: z.number().int().min(500).max(60_000).optional(),
+        timeoutMs: z.number().int().min(500).max(120_000).optional(),
       })
       .parse(payload);
     const tid = tabId ?? win.activeTab?.id;
     if (!tid) throw new Error("No active tab");
     const tab = win.getTab(tid);
     if (!tab) throw new Error(`Tab ${tid} not found`);
-    const result = await evalJs(tab.webContents, code, true, timeoutMs ?? 15_000);
+    const result = await evalJs(tab.webContents, code, true, timeoutMs ?? 90_000);
     if (!result.ok) return { ok: false, error: result.error };
     return { ok: true, value: result.value };
   });
@@ -397,6 +403,21 @@ export function registerWorkbenchIpc(win: Window): void {
     clearApisForOrigin(origin);
     return { ok: true };
   });
+
+  ipcMain.handle(Channels.ApiBankRename, (_e, payload) => {
+    const { key, name } = z
+      .object({ key: z.string(), name: z.string().min(0).max(80) })
+      .parse(payload);
+    return renameApi(key, name);
+  });
+
+  // Stream LLM-generated names back to the renderer as they land. The store
+  // exposes a one-shot subscriber list; we forward each event to the window
+  // and clean up when the window closes.
+  const offNamed = onApiNamed((spec) => {
+    broadcastToWindow(win, Channels.EventApiNamed, spec);
+  });
+  win.sidebar.view.webContents.on("destroyed", offNamed);
 
   // ---- Extensions (per-site saved augmentations) ----
   ipcMain.handle(Channels.ExtensionsList, (_e, payload) => {

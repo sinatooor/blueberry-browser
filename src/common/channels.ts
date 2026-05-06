@@ -47,6 +47,7 @@ export const Channels = {
   ApiBankAdd: "apiBank:add",
   ApiBankRemove: "apiBank:remove",
   ApiBankClearOrigin: "apiBank:clearOrigin",
+  ApiBankRename: "apiBank:rename",
 
   // Saved extensions per site (built on top of SiteAugmentation memory)
   ExtensionsList: "extensions:list",
@@ -68,6 +69,8 @@ export const Channels = {
   EventFileAdded: "event:file:added",
   EventMemoryProposed: "event:memory:proposed",
   EventToast: "event:toast",
+  // Fires when the LLM-generated short name for an endpoint lands.
+  EventApiNamed: "event:api:named",
 } as const;
 
 export type ChannelName = (typeof Channels)[keyof typeof Channels];

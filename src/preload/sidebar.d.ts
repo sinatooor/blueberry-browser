@@ -139,6 +139,7 @@ interface WorkbenchAPI {
   }) => Promise<EndpointSpec>;
   apiBankRemove: (key: string) => Promise<{ ok: boolean }>;
   apiBankClearOrigin: (origin: string) => Promise<{ ok: boolean }>;
+  apiBankRename: (key: string, name: string) => Promise<EndpointSpec | null>;
 
   // Extensions
   extensionsList: (domain: string) => Promise<SiteAugmentation[]>;
@@ -166,6 +167,7 @@ interface WorkbenchAPI {
   onFileAdded: (cb: (payload: { projectId: string; path: string }) => void) => () => void;
   onMemoryProposed: (cb: (payload: { domain: string; updates: MemoryUpdate[] }) => void) => () => void;
   onToast: (cb: (payload: { kind: "info" | "warn" | "error"; title: string; body?: string }) => void) => () => void;
+  onApiNamed: (cb: (spec: EndpointSpec) => void) => () => void;
 }
 
 declare global {

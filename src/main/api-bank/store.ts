@@ -10,11 +10,22 @@
 
 import { getDb } from "../projects/store";
 import { inferSchema } from "../cdp/schema";
+import { hasEnoughShape, nameApiBackground } from "./name";
 import type {
   EndpointSpec,
   NetRequest,
   SchemaNode,
 } from "../../common/types";
+
+// Renderer subscribers that want to be notified when an endpoint's
+// LLM-generated `name` lands. Wired from `index.ts` so we can ship the
+// updated spec to every open window without coupling the store to Electron.
+type NameListener = (spec: EndpointSpec) => void;
+const nameListeners = new Set<NameListener>();
+export function onApiNamed(fn: NameListener): () => void {
+  nameListeners.add(fn);
+  return () => nameListeners.delete(fn);
+}
 
 const SENSITIVE_HEADER_PATTERNS: RegExp[] = [
   /^authorization$/i,
@@ -124,6 +135,7 @@ export function upsertApiFromRequest(req: NetRequest): EndpointSpec | null {
       now,
     );
   }
+  scheduleNaming(merged);
   return merged;
 }
 
@@ -176,6 +188,7 @@ export function addManualApi(args: {
       `UPDATE captured_apis SET spec_json = ?, last_seen = ?, source = 'manual'
        WHERE endpoint_key = ?`,
     ).run(JSON.stringify(merged), now, key);
+    scheduleNaming(merged);
     return merged;
   }
   db.prepare(
@@ -183,6 +196,7 @@ export function addManualApi(args: {
        (endpoint_key, origin, method, pathname, spec_json, source, first_seen, last_seen, count)
      VALUES (?, ?, ?, ?, ?, 'manual', ?, ?, 1)`,
   ).run(key, origin, spec.method, pathname, JSON.stringify(spec), now, now);
+  scheduleNaming(spec);
   return spec;
 }
 
@@ -215,6 +229,60 @@ export function removeApi(key: string): void {
 
 export function clearApisForOrigin(origin: string): void {
   getDb().prepare(`DELETE FROM captured_apis WHERE origin = ?`).run(origin);
+}
+
+// Manual rename. Used by the API menu's pencil affordance and to seed names
+// for endpoints that the auto-namer hasn't touched yet (or got wrong).
+export function renameApi(key: string, name: string): EndpointSpec | null {
+  const row = getRow(key);
+  if (!row) return null;
+  const spec = deserializeSpec(row.spec_json);
+  if (!spec) return null;
+  const cleaned = name.trim().slice(0, 60);
+  spec.name = cleaned || undefined;
+  getDb()
+    .prepare(`UPDATE captured_apis SET spec_json = ? WHERE endpoint_key = ?`)
+    .run(JSON.stringify(spec), key);
+  for (const fn of nameListeners) fn(spec);
+  return spec;
+}
+
+// Background namer: skips endpoints we've already named or whose response
+// shape isn't rich enough yet. Updates the row + notifies listeners on
+// success. Failures are silent — the next capture will try again.
+function scheduleNaming(spec: EndpointSpec): void {
+  if (spec.name && spec.name.trim().length > 0) return;
+  if (!hasEnoughShape(spec)) return;
+  void nameApiBackground(spec).then((name) => {
+    if (!name) return;
+    // Re-read so we don't stomp on a concurrent merge.
+    const fresh = getRow(spec.key);
+    if (!fresh) return;
+    const parsed = deserializeSpec(fresh.spec_json);
+    if (!parsed) return;
+    parsed.name = name;
+    getDb()
+      .prepare(
+        `UPDATE captured_apis SET spec_json = ? WHERE endpoint_key = ?`,
+      )
+      .run(JSON.stringify(parsed), spec.key);
+    for (const fn of nameListeners) fn(parsed);
+  });
+}
+
+// Walk every captured endpoint and trigger naming for the ones that don't
+// already have a name. Called once on app startup so existing rows from
+// previous sessions catch up. Stays cheap because `nameApiBackground`
+// dedupes in-flight requests and `scheduleNaming` skips rows with names.
+export function backfillApiNames(): void {
+  const rows = getDb()
+    .prepare(`SELECT spec_json FROM captured_apis ORDER BY last_seen DESC`)
+    .all() as { spec_json: string }[];
+  for (const row of rows) {
+    const spec = deserializeSpec(row.spec_json);
+    if (!spec) continue;
+    scheduleNaming(spec);
+  }
 }
 
 // ---- helpers ---------------------------------------------------------------
@@ -268,6 +336,9 @@ function mergeSpecs(prev: EndpointSpec | null, next: EndpointSpec): EndpointSpec
   return {
     ...prev,
     url: next.url,
+    // Hold onto the LLM-generated name across captures — `next` is the just-
+    // observed request which never carries one.
+    name: prev.name ?? next.name,
     queryKeys: union(prev.queryKeys, next.queryKeys),
     requestHeaders: { ...prev.requestHeaders, ...next.requestHeaders },
     hasCsrfHint: prev.hasCsrfHint || next.hasCsrfHint,

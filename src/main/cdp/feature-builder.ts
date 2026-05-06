@@ -43,8 +43,23 @@ PAGE-SIDE HELPERS — every page has these globals (we inject them before any sc
 * window.__bb_widget(id, title, body) → returns a content slot DOM element
     Creates a draggable, closeable floating panel pinned to the top-right with the given title in the header. \`id\` MUST start with "bb-". \`body\` may be an HTMLString or a DOM Node. Re-running with the same id reuses the existing panel (idempotent). Position is auto-persisted to localStorage. Use this INSTEAD of building your own fixed-position div — the user can drag your panel around and close it.
 
-* window.__bb_runPython(code) → Promise<{ stdout, stderr, plots: [{ dataUrl, mime }], value }>
-    Runs Python in a Pyodide sandbox in the main process and returns results. Use this for plotting, pandas, numpy, anything statistical. matplotlib plots are auto-captured as base64-encoded PNGs in \`plots\`; turn them into <img src={dataUrl}> inside your widget. \`value\` is the final expression (if any). The Python sandbox sees the project's /project/files/ directory but is otherwise isolated from the page; pass data IN by interpolating it into the source string.
+* window.__bb_runPython(code, data?) → Promise<{ stdout, stderr, plots: [{ dataUrl, mime }], value }>
+    Runs Python in a Pyodide sandbox in the main process and returns results. Use this for plotting, pandas, numpy, anything statistical. matplotlib plots are auto-captured as base64-encoded PNGs in \`plots\`; turn them into <img src={dataUrl}> inside your widget.
+    PASS DATA IN VIA THE SECOND ARGUMENT, NOT BY INTERPOLATING JSON INTO THE CODE. The host serializes once and Pyodide hands you a real Python object as the global \`_data\` — dict/list/scalar mirroring whatever you passed. This is the ONLY safe way to ship arrays of objects to Python; nesting JSON.stringify inside a backtick template is the #1 cause of "Missing } in template expression" syntax errors.
+
+    GOOD:
+        const rows = json.events;  // already a JS array of objects
+        const py = await window.__bb_runPython(\`
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.DataFrame(_data)
+df["date"] = pd.to_datetime(df["date"])
+df.plot(x="date", y=["failed_payments","successful_payments"])
+plt.show()
+        \`, rows);
+
+    BAD (do not do this):
+        const py = await window.__bb_runPython(\`data = \${JSON.stringify(rows)}\\n...\`);   // brittle, often syntax-errors
 
 BUILD CODE RULES (every rule matters — the script is reviewed before it runs):
 1. Wrap everything in (async () => { ... })(). Runs in the live page via CDP Runtime.evaluate.
@@ -52,10 +67,22 @@ BUILD CODE RULES (every rule matters — the script is reviewed before it runs):
 3. ALWAYS use fetch(url, { credentials: "include", ... }) so the user's cookies travel automatically.
 4. NEVER inline a literal cookie / authorization / CSRF value from the spec — those are "<redacted>" placeholders. If a request needs a CSRF token, READ it at runtime: parse document.cookie, document.querySelector('meta[name*="csrf" i],meta[name*="xsrf" i]'), or call the endpoint that returns one. Match how the page itself does it.
 5. Use window.__bb_widget('bb-feature-<short-name>', '<Human Title>', '') for any visible UI. The user can move and close it. Don't build your own fixed-position chrome.
-6. For analysis / plots, send raw data into __bb_runPython and render the returned plots[] as <img>. Don't try to pull pandas into the page.
-7. Catch ALL errors. On error, render the message inside the widget body and console.error. Never throw uncaught.
-8. Hard cap: 5000 characters. Be terse — one helper function, no over-engineering.
-9. Idempotent: re-running leaves the page in the same final state.
+6. CREATE THE WIDGET FIRST and put a "Loading…" placeholder in it BEFORE you start any fetch / __bb_runPython work. Example pattern:
+     const slot = window.__bb_widget('bb-feature-payments', 'Payments plot', '');
+     slot.innerHTML = '<div style="padding:16px;color:#888">Loading data…</div>';
+     try {
+       const data = await fetch(...);
+       slot.innerHTML = '<div style="padding:16px;color:#888">Rendering plot (Pyodide)…</div>';
+       const py = await window.__bb_runPython(\`...\`);
+       slot.innerHTML = py.plots.map(p => '<img style="max-width:100%" src="' + p.dataUrl + '">').join('') || '<pre>' + py.stdout + '</pre>';
+     } catch (e) {
+       slot.innerHTML = '<pre style="color:#c00;white-space:pre-wrap">' + (e && e.message || e) + '</pre>';
+     }
+   The first __bb_runPython call after app start can take 30+ seconds while Pyodide loads matplotlib — without a visible Loading state the user thinks nothing is happening.
+7. For analysis / plots, send raw data into __bb_runPython and render the returned plots[] as <img>. End your Python with plt.show() — that is what captures the figure into result.plots. Don't try to pull pandas into the page.
+8. Catch ALL errors. On error, render the message inside the widget body and console.error. Never throw uncaught.
+9. Hard cap: 5000 characters. Be terse — one helper function, no over-engineering.
+10. Idempotent: re-running leaves the page in the same final state.
 
 If the requested feature is impossible from the captured spec (e.g. the right endpoint isn't enabled / captured), prefer kind="answer" with a one-sentence "what's missing — interact with X or enable Y in the API menu" message, and DO NOT generate code.`;
 
@@ -100,15 +127,40 @@ export async function buildFeature(args: BuildArgs): Promise<BuiltFeature> {
     args.prompt,
   ].join("\n");
 
-  const { text } = await generateText({
-    model: pickModel(),
-    system: SYSTEM_PROMPT,
-    prompt: userMessage,
-    temperature: 0.2,
-    maxRetries: 2,
-  });
+  // First pass.
+  let parsed = await callBuilder(userMessage);
 
-  const parsed = parseBuiltFeature(text);
+  // For build outputs, syntax-check the code with V8's parser. If it fails,
+  // give the model the literal V8 error message and a re-run prompt — twice.
+  // The most common LLM failure is unbalanced template literals (e.g. nested
+  // backticks while building Python source strings), which a single retry
+  // with the actual error message reliably fixes.
+  if (parsed.kind === "build" && parsed.code) {
+    let syntaxError = checkJsSyntax(parsed.code);
+    let attempts = 0;
+    while (syntaxError && attempts < 2) {
+      attempts++;
+      const repairPrompt = [
+        userMessage,
+        "",
+        "Your previous response had a JavaScript syntax error:",
+        "",
+        `  ${syntaxError}`,
+        "",
+        "Code that failed to parse:",
+        "```js",
+        parsed.code,
+        "```",
+        "",
+        "Re-emit the SAME strict-JSON shape (kind=build, description, code, endpoints_used, uses_csrf, uses_cookies, mutates_data, ui_changes) but with valid JavaScript this time. The most common cause is mismatched backticks/braces while interpolating Python source — escape carefully or use string concatenation if nesting template literals is hard.",
+      ].join("\n");
+      const next = await callBuilder(repairPrompt);
+      if (next.kind !== "build" || !next.code) break;
+      parsed = next;
+      syntaxError = checkJsSyntax(parsed.code);
+    }
+  }
+
   if (parsed.kind === "answer") {
     return { ...parsed, warnings: [] };
   }
@@ -117,6 +169,35 @@ export async function buildFeature(args: BuildArgs): Promise<BuiltFeature> {
   // sometimes lies about mutates_data when the code clearly POSTs.
   const reconciled = reconcileFlags(parsed);
   return { ...reconciled, warnings };
+}
+
+// Single LLM call → parsed BuiltFeature. Used by buildFeature for both the
+// initial pass and any syntax-repair retries.
+async function callBuilder(userMessage: string): Promise<BuiltFeature> {
+  const { text } = await generateText({
+    model: pickModel(),
+    system: SYSTEM_PROMPT,
+    prompt: userMessage,
+    temperature: 0.2,
+    maxRetries: 2,
+  });
+  return parseBuiltFeature(text);
+}
+
+// Validate that `code` parses as JavaScript before we ship it to CDP. The
+// LLM's most common failure mode is malformed template literals while
+// interpolating Python source — V8's "Missing } in template expression"
+// message is the giveaway. We use the Function constructor as a parser-only
+// check (not actually invoked).
+export function checkJsSyntax(code: string): string | null {
+  try {
+    // Wrapping in `async function` lets the LLM's top-level await + IIFE
+    // patterns parse without complaining.
+    new Function(`return (async () => {\n${code}\n})()`);
+    return null;
+  } catch (e) {
+    return (e as Error).message;
+  }
 }
 
 export function parseBuiltFeature(raw: string): BuiltFeature {

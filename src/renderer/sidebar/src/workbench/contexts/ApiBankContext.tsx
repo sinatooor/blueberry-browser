@@ -63,6 +63,8 @@ interface ApiBankContextValue {
         notes?: string
     }) => Promise<EndpointSpec>
     removeApiByKey: (key: string) => Promise<void>
+    // Manual rename for the LLM-generated short name. Empty string clears it.
+    renameApi: (key: string, name: string) => Promise<void>
 
     // Bank overlay state.
     bankOpen: boolean
@@ -144,13 +146,21 @@ export const ApiBankProvider: React.FC<{ children: React.ReactNode }> = ({
             // We prefer the live entry when both exist (it has the most recent
             // counts/headers). Stored entries fill in cross-origin gaps so the
             // Bank's "All sites" filter actually has something to show.
+            //
+            // The LLM-generated `name` lives ONLY in the stored catalog, so
+            // when an endpoint shows up in both, we splice the stored name
+            // back onto the live spec — otherwise the live entry wipes the
+            // name and every row reverts to "naming…".
             const [liveRes, stored] = await Promise.all([
                 window.workbench.getFeatureSpec(),
                 window.workbench.apiBankList(),
             ])
             const merged = new Map<string, EndpointSpec>()
             for (const s of stored) merged.set(s.key, s)
-            for (const s of liveRes.endpoints) merged.set(s.key, s)
+            for (const s of liveRes.endpoints) {
+                const prev = merged.get(s.key)
+                merged.set(s.key, prev ? { ...s, name: s.name ?? prev.name } : s)
+            }
             const arr = Array.from(merged.values()).sort(
                 (a, b) => b.lastSeen - a.lastSeen,
             )
@@ -186,6 +196,33 @@ export const ApiBankProvider: React.FC<{ children: React.ReactNode }> = ({
         },
         [refresh],
     )
+
+    const renameApi = useCallback(
+        async (key: string, name: string): Promise<void> => {
+            const updated = await window.workbench.apiBankRename(key, name)
+            if (updated) {
+                setSpec((prev) =>
+                    prev.map((s) => (s.key === updated.key ? updated : s)),
+                )
+            }
+        },
+        [],
+    )
+
+    // Stream LLM-generated names as they land so the popover updates without
+    // waiting for the 2 s polling refresh. The handler merges by key.
+    useEffect(() => {
+        const off = window.workbench.onApiNamed((spec) => {
+            setSpec((prev) => {
+                const idx = prev.findIndex((s) => s.key === spec.key)
+                if (idx === -1) return [spec, ...prev]
+                const next = prev.slice()
+                next[idx] = { ...next[idx], ...spec }
+                return next
+            })
+        })
+        return off
+    }, [])
 
     useEffect(() => {
         void refresh()
@@ -253,6 +290,7 @@ export const ApiBankProvider: React.FC<{ children: React.ReactNode }> = ({
             enabledSpec,
             addManualApi,
             removeApiByKey,
+            renameApi,
             bankOpen,
             bankSelectedKey,
             bankFilter,
@@ -272,6 +310,7 @@ export const ApiBankProvider: React.FC<{ children: React.ReactNode }> = ({
             enabledSpec,
             addManualApi,
             removeApiByKey,
+            renameApi,
             bankOpen,
             bankSelectedKey,
             bankFilter,

@@ -179,6 +179,11 @@ export async function runPython(
   source: string,
   projectId: string,
   onChunk?: (c: CodeOutputChunk) => void,
+  // Optional structured data made available in Python as the `_data` global.
+  // Lets callers skip interpolating JSON into the source — the host serializes
+  // once and Pyodide deserializes once, so the LLM never has to nest
+  // backticks/braces around a stringified payload.
+  data?: unknown,
 ): Promise<CodeRunResult> {
   if (!hostWindow) createPyodideHost();
   if (!warmed) await warmupPyodide();
@@ -219,6 +224,7 @@ export async function runPython(
       runId,
       code: source,
       projectFiles: projectFiles.map((f) => ({ name: f.name, bytes: f.bytes })),
+      data: data === undefined ? null : data,
     });
     // Hard timeout
     setTimeout(() => {

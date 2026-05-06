@@ -189,6 +189,26 @@ export async function screenshot(
   }
 }
 
+// If `source` is exactly an IIFE wrapper (the build flow's contract — the
+// LLM emits `(async () => { ... })();` so the script is copy-pasteable into
+// devtools), pull the body out so our outer wrapper can actually await it.
+// Without this, the inner IIFE's promise is never returned by the outer
+// async wrapper, the Promise.race resolves immediately, and the timeout
+// never fires — making "Run" report success before the user's script has
+// actually finished its fetches and Pyodide calls.
+function unwrapIIFE(source: string): string {
+  const trimmed = source.trim().replace(/;+\s*$/, "");
+  const arrow = trimmed.match(
+    /^\(\s*async\s*\(\s*\)\s*=>\s*\{([\s\S]*)\}\s*\)\s*\(\s*\)$/,
+  );
+  if (arrow) return arrow[1];
+  const fn = trimmed.match(
+    /^\(\s*async\s+function\s*[a-zA-Z_$]*\s*\(\s*\)\s*\{([\s\S]*)\}\s*\)\s*\(\s*\)$/,
+  );
+  if (fn) return fn[1];
+  return source;
+}
+
 export async function evalJs(
   wc: WebContents,
   source: string,
@@ -206,8 +226,9 @@ export async function evalJs(
     };
     // Wrap user code in an IIFE so they can use top-level `await`, and race
     // it against a setTimeout reject so a hung script can't block the agent.
+    const body = unwrapIIFE(source);
     const expression = `Promise.race([
-      (async () => { ${source}\n })(),
+      (async () => { ${body}\n })(),
       new Promise((_, reject) => setTimeout(() => reject(new Error("evalJs timed out after ${timeoutMs}ms")), ${timeoutMs}))
     ])`;
     const res = await send<EvalRes>(wc, "Runtime.evaluate", {

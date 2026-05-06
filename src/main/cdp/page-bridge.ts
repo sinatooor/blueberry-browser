@@ -165,7 +165,11 @@ const PAGE_HELPERS = String.raw`
 
   // ----- Python bridge -----
   __bb._pendingPy = new Map();
-  __bb.runPython = function (code) {
+  // runPython(code, data) — when data is provided, it lands in Python as
+  // the global _data (full Python object, not a JSON string). Lets callers
+  // skip JSON-interpolating data into the source — the single biggest
+  // source of "Missing } in template expression" syntax errors.
+  __bb.runPython = function (code, data) {
     return new Promise(function (resolve, reject) {
       var id = Math.random().toString(36).slice(2) + Date.now().toString(36);
       __bb._pendingPy.set(id, { resolve: resolve, reject: reject });
@@ -175,7 +179,9 @@ const PAGE_HELPERS = String.raw`
           reject(new Error('Python bridge not available'));
           return;
         }
-        window.${BINDING_NAME}(JSON.stringify({ id: id, code: code }));
+        var payload = { id: id, code: code };
+        if (data !== undefined) payload.data = data;
+        window.${BINDING_NAME}(JSON.stringify(payload));
       } catch (e) {
         __bb._pendingPy.delete(id);
         reject(e);
@@ -221,12 +227,28 @@ export function attachPageBridge(wc: WebContents): void {
     void send(wc, "Runtime.addBinding", { name: BINDING_NAME }).catch(() => {});
   });
 
+  // Belt-and-suspenders: the addScriptToEvaluateOnNewDocument call above
+  // can lose its race with the very first navigation, leaving window.__bb
+  // undefined for the loaded page. After every full load, re-inject the
+  // helpers via Runtime.evaluate. The script is idempotent (early-out on
+  // window.__bb), so this is a no-op when it already ran.
+  const ensureHelpers = (): void => {
+    void send(wc, "Runtime.evaluate", {
+      expression: PAGE_HELPERS,
+      awaitPromise: false,
+    }).catch(() => {});
+    void send(wc, "Runtime.addBinding", { name: BINDING_NAME }).catch(
+      () => {},
+    );
+  };
+  wc.on("did-finish-load", ensureHelpers);
+
   // Listen for binding calls.
   onEvent(wc, async (method, params) => {
     if (method !== "Runtime.bindingCalled") return;
     const p = params as { name?: string; payload?: string };
     if (p.name !== BINDING_NAME) return;
-    let req: { id: string; code: string };
+    let req: { id: string; code: string; data?: unknown };
     try {
       req = JSON.parse(p.payload ?? "{}");
     } catch {
@@ -238,7 +260,7 @@ export function attachPageBridge(wc: WebContents): void {
       return;
     }
     try {
-      const result = await runPython(req.code, projectId);
+      const result = await runPython(req.code, projectId, undefined, req.data);
       const stdout = collect(result.outputs, "stdout");
       const stderr = collect(result.outputs, "stderr");
       const plots = await readPlots(result.outputs);
