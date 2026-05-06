@@ -312,11 +312,19 @@ export function registerWorkbenchIpc(win: Window): void {
   // how the API Bank's per-endpoint on/off toggles take effect: the
   // disabled ones are filtered out renderer-side and never reach the LLM.
   ipcMain.handle(Channels.FeatureBuild, async (_e, payload) => {
-    const { prompt, tabId, endpoints } = z
+    const { prompt, tabId, endpoints, previousFeature } = z
       .object({
         prompt: z.string().min(1),
         tabId: z.string().optional(),
         endpoints: z.array(z.any()).optional(),
+        previousFeature: z
+          .object({
+            description: z.string().optional(),
+            code: z.string(),
+            suggested_id: z.string().optional(),
+            suggested_name: z.string().optional(),
+          })
+          .optional(),
       })
       .parse(payload);
     const tid = tabId ?? win.activeTab?.id;
@@ -340,6 +348,7 @@ export function registerWorkbenchIpc(win: Window): void {
       pageUrl: url,
       origin,
       spec,
+      previousFeature,
     });
   });
 
@@ -451,6 +460,27 @@ export function registerWorkbenchIpc(win: Window): void {
         2000,
       ).catch(() => undefined);
     }
+    return { ok: true };
+  });
+
+  // Saves an already-running build as a per-site extension that auto-replays
+  // on every future visit. The renderer wires this to the build card's
+  // "Save extension" button. The id MUST start with "bb-" to match the
+  // widget the script created (so removal can strip it from the live page).
+  ipcMain.handle(Channels.ExtensionsAdd, (_e, payload) => {
+    const { domain, id, name, script } = z
+      .object({
+        domain: z.string().min(1),
+        id: z
+          .string()
+          .regex(/^bb-[a-z0-9-]+$/i, "id must start with 'bb-'"),
+        name: z.string().min(1).max(80),
+        script: z.string().min(1),
+      })
+      .parse(payload);
+    applyMemoryUpdates(domain, [
+      { kind: "augmentation", id, name, script },
+    ]);
     return { ok: true };
   });
 

@@ -59,6 +59,7 @@ interface ThreadContextValue {
     busy: boolean
     send: (text: string, mode: Mode) => Promise<void>
     runBuiltFeature: (eventId: string) => Promise<void>
+    saveBuiltFeature: (eventId: string) => Promise<void>
     discardBuiltFeature: (eventId: string) => void
     clear: () => void
 }
@@ -201,10 +202,30 @@ export const ThreadProvider: React.FC<{ children: React.ReactNode }> = ({
                     // here so toggles flipped after Send don't change this
                     // request mid-flight.
                     const enabled = apiBank.enabledSpec
+                    // Gather the most recent build event in the thread so
+                    // chat-iteration ("now make it red", "add a refresh
+                    // button") modifies the existing feature instead of
+                    // generating a fresh one with a different id. "New
+                    // thread" or starting in a different mode resets this.
+                    const lastBuild = [...events]
+                        .reverse()
+                        .find(
+                            (e): e is Extract<ThreadEvent, { kind: 'build' }> =>
+                                e.kind === 'build',
+                        )
+                    const previousFeature = lastBuild
+                        ? {
+                            description: lastBuild.feature.description,
+                            code: lastBuild.feature.code,
+                            suggested_id: lastBuild.feature.suggested_id,
+                            suggested_name: lastBuild.feature.suggested_name,
+                        }
+                        : undefined
                     const feature = await window.workbench.buildFeature(
                         trimmed,
                         wb.activeTabId,
                         enabled,
+                        previousFeature,
                     )
                     // The LLM picks one of two routes:
                     //   "answer" — surface as a plain assistant message in the thread
@@ -265,7 +286,7 @@ export const ThreadProvider: React.FC<{ children: React.ReactNode }> = ({
                 if (mode !== 'chat') setBusy(false)
             }
         },
-        [pushEvent, pushNote, wb, apiBank],
+        [pushEvent, pushNote, wb, apiBank, events],
     )
 
     const runBuiltFeature = useCallback(
@@ -322,14 +343,84 @@ export const ThreadProvider: React.FC<{ children: React.ReactNode }> = ({
         setEvents((prev) => prev.filter((e) => e.id !== eventId))
     }, [])
 
+    // Persist a successful build as a per-site extension. Uses the LLM's
+    // suggested_id / suggested_name when present; otherwise extracts the
+    // first bb-* id from the code (matched by feature-builder's parser).
+    // Pushes a confirmation note into the thread.
+    const saveBuiltFeature = useCallback(
+        async (eventId: string): Promise<void> => {
+            const target = events.find(
+                (e): e is Extract<ThreadEvent, { kind: 'build' }> =>
+                    e.kind === 'build' && e.id === eventId,
+            )
+            if (!target) return
+            if (!wb.domain) {
+                pushNote(
+                    'error',
+                    'Cannot save extension',
+                    'Open a tab on a site first.',
+                )
+                return
+            }
+            const id = target.feature.suggested_id
+            if (!id) {
+                pushNote(
+                    'error',
+                    'Cannot save extension',
+                    'No bb-* id found in the generated code — ask the model to add one.',
+                )
+                return
+            }
+            const name =
+                target.feature.suggested_name ||
+                target.feature.description.slice(0, 60) ||
+                id
+            try {
+                await window.workbench.extensionsAdd(wb.domain, {
+                    id,
+                    name,
+                    script: target.feature.code,
+                })
+                pushNote(
+                    'success',
+                    'Saved extension',
+                    `"${name}" will auto-run on every visit to ${wb.domain}.`,
+                )
+            } catch (err) {
+                pushNote(
+                    'error',
+                    'Save failed',
+                    err instanceof Error ? err.message : String(err),
+                )
+            }
+        },
+        [events, wb.domain, pushNote],
+    )
+
     const clear = useCallback(() => {
         setEvents([])
         seenStepIds.current.clear()
     }, [])
 
     const value = useMemo<ThreadContextValue>(
-        () => ({ events, busy, send, runBuiltFeature, discardBuiltFeature, clear }),
-        [events, busy, send, runBuiltFeature, discardBuiltFeature, clear],
+        () => ({
+            events,
+            busy,
+            send,
+            runBuiltFeature,
+            saveBuiltFeature,
+            discardBuiltFeature,
+            clear,
+        }),
+        [
+            events,
+            busy,
+            send,
+            runBuiltFeature,
+            saveBuiltFeature,
+            discardBuiltFeature,
+            clear,
+        ],
     )
 
     return (

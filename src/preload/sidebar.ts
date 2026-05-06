@@ -111,7 +111,19 @@ const workbenchAPI = {
     prompt: string,
     tabId?: string,
     endpoints?: unknown[],
-  ) => ipcRenderer.invoke(Channels.FeatureBuild, { prompt, tabId, endpoints }),
+    previousFeature?: {
+      description?: string
+      code: string
+      suggested_id?: string
+      suggested_name?: string
+    },
+  ) =>
+    ipcRenderer.invoke(Channels.FeatureBuild, {
+      prompt,
+      tabId,
+      endpoints,
+      previousFeature,
+    }),
   runFeature: (code: string, tabId?: string, timeoutMs?: number) =>
     ipcRenderer.invoke(Channels.FeatureRun, { code, tabId, timeoutMs }),
 
@@ -140,6 +152,11 @@ const workbenchAPI = {
     ipcRenderer.invoke(Channels.ExtensionsSetEnabled, { domain, id, enabled }),
   extensionsRemove: (domain: string, id: string) =>
     ipcRenderer.invoke(Channels.ExtensionsRemove, { domain, id }),
+  extensionsAdd: (
+    domain: string,
+    args: { id: string; name: string; script: string },
+  ) =>
+    ipcRenderer.invoke(Channels.ExtensionsAdd, { domain, ...args }),
 
   // Memory
   getMemory: (domain: string) => ipcRenderer.invoke(Channels.MemoryGet, { domain }),

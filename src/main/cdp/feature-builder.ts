@@ -35,7 +35,9 @@ For BUILD, return:
   "uses_csrf": boolean,
   "uses_cookies": boolean,           // true whenever the script calls fetch on this origin
   "mutates_data": boolean,           // any POST/PUT/PATCH/DELETE
-  "ui_changes": string               // brief description of UI inserted, or "none"
+  "ui_changes": string,              // brief description of UI inserted, or "none"
+  "suggested_id": string,            // the SAME bb-<short-name> id used inside __bb_widget(...) — required so the user can save the build as a replayable extension
+  "suggested_name": string           // 2-4 word human label shown in the Extensions menu, e.g. "Payments Over Time"
 }
 
 PAGE-SIDE HELPERS — every page has these globals (we inject them before any script runs):
@@ -107,6 +109,15 @@ export interface BuildArgs {
   pageUrl: string | null;
   origin: string | null;
   spec: EndpointSpec[];
+  // Optional previous build to iterate on. When present we ask the model
+  // to modify it rather than start over — keeps the same widget id, tweaks
+  // the code, and avoids two stacked panels for the same feature.
+  previousFeature?: {
+    description?: string;
+    code: string;
+    suggested_id?: string;
+    suggested_name?: string;
+  };
 }
 
 export async function buildFeature(args: BuildArgs): Promise<BuiltFeature> {
@@ -116,12 +127,33 @@ export async function buildFeature(args: BuildArgs): Promise<BuiltFeature> {
     );
   }
 
+  const previousBlock = args.previousFeature
+    ? [
+        "",
+        "Previous version of this feature (the user is iterating, not starting fresh):",
+        args.previousFeature.description
+          ? `description: ${args.previousFeature.description}`
+          : "",
+        args.previousFeature.suggested_id
+          ? `id: ${args.previousFeature.suggested_id}`
+          : "",
+        "```js",
+        args.previousFeature.code,
+        "```",
+        "",
+        "MODIFY the previous version to satisfy the new request unless the user explicitly says 'start over' or 'new feature'. Keep the SAME suggested_id so the panel updates in place rather than stacking. Re-emit the full code in your response — partial diffs aren't supported.",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : "";
+
   const userMessage = [
     `Current page URL: ${args.pageUrl ?? "(unknown)"}`,
     `Origin: ${args.origin ?? "(unknown)"}`,
     "",
     "Discovered API spec for this page:",
     renderApiSpec(args.spec),
+    previousBlock,
     "",
     "User feature request:",
     args.prompt,
@@ -229,16 +261,26 @@ export function parseBuiltFeature(raw: string): BuiltFeature {
     declaredKind === "answer" || (declaredKind === "build" && !hasCode && typeof o.answer === "string")
       ? "answer"
       : "build";
+  const suggestedIdRaw = asString(o.suggested_id, "").trim();
+  const suggestedNameRaw = asString(o.suggested_name, "").trim();
+  // Fallback: pluck the first bb-* id out of the code itself if the model
+  // forgot to echo it explicitly. Keeps Save-as-extension working even when
+  // the schema regression happens.
+  const codeStr = asString(o.code, "");
+  const fallbackIdMatch = codeStr.match(/['"`](bb-[a-z0-9-]+)['"`]/i);
+  const suggested_id = suggestedIdRaw || fallbackIdMatch?.[1] || undefined;
   return {
     kind,
     description: asString(o.description, ""),
-    code: asString(o.code, ""),
+    code: codeStr,
     endpoints_used: asStringArray(o.endpoints_used),
     uses_csrf: asBoolean(o.uses_csrf, false),
     uses_cookies: asBoolean(o.uses_cookies, true),
     mutates_data: asBoolean(o.mutates_data, false),
     ui_changes: asString(o.ui_changes, "none"),
     answer: typeof o.answer === "string" ? (o.answer as string) : undefined,
+    suggested_id,
+    suggested_name: suggestedNameRaw || undefined,
     warnings: [],
   };
 }

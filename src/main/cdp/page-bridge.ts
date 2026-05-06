@@ -61,7 +61,7 @@ const PAGE_HELPERS = String.raw`
       top: '24px',
       right: '24px',
       width: 'min(420px, 90vw)',
-      maxHeight: '80vh',
+      // No maxHeight — height is now user-controlled via the resize handle.
       overflow: 'hidden',
       display: 'flex',
       flexDirection: 'column',
@@ -74,6 +74,13 @@ const PAGE_HELPERS = String.raw`
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       fontSize: '13px',
       backdropFilter: 'blur(8px)',
+      // CSS-native resize. Browser draws a tiny diagonal grip in the
+      // bottom-right; ResizeObserver below persists the chosen size.
+      resize: 'both',
+      minWidth: '240px',
+      minHeight: '160px',
+      maxWidth: '95vw',
+      height: '320px',
     });
 
     try {
@@ -84,6 +91,17 @@ const PAGE_HELPERS = String.raw`
           root.style.left = p.left + 'px';
           root.style.top = p.top + 'px';
           root.style.right = 'auto';
+        }
+      }
+      var sizeStored = localStorage.getItem('bb:widget-size:' + id);
+      if (sizeStored) {
+        var sz = JSON.parse(sizeStored);
+        if (typeof sz.width === 'number' && sz.width > 200) {
+          root.style.width = Math.min(sz.width, window.innerWidth - 16) + 'px';
+        }
+        if (typeof sz.height === 'number' && sz.height > 120) {
+          root.style.height =
+            Math.min(sz.height, window.innerHeight - 16) + 'px';
         }
       }
     } catch (e) {}
@@ -153,13 +171,38 @@ const PAGE_HELPERS = String.raw`
 
     var slot = document.createElement('div');
     slot.setAttribute('data-bb-slot', 'true');
-    Object.assign(slot.style, { padding: '12px', overflow: 'auto', flex: '1' });
+    Object.assign(slot.style, {
+      padding: '12px',
+      overflow: 'auto',
+      flex: '1',
+      minHeight: '0',
+    });
     if (typeof body === 'string') slot.innerHTML = body;
     else if (body instanceof Node) slot.appendChild(body);
 
     root.appendChild(header);
     root.appendChild(slot);
     document.body.appendChild(root);
+
+    // Persist user-chosen size on every settle (debounced via the natural
+    // gap between resize-observer ticks).
+    try {
+      var saveTimer = null;
+      var ro = new ResizeObserver(function (entries) {
+        if (saveTimer) clearTimeout(saveTimer);
+        saveTimer = setTimeout(function () {
+          try {
+            var rect = entries[0].contentRect;
+            localStorage.setItem(
+              'bb:widget-size:' + id,
+              JSON.stringify({ width: rect.width, height: rect.height }),
+            );
+          } catch (e) {}
+        }, 250);
+      });
+      ro.observe(root);
+    } catch (e) {}
+
     return slot;
   };
 

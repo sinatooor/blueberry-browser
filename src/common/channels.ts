@@ -53,6 +53,7 @@ export const Channels = {
   ExtensionsList: "extensions:list",
   ExtensionsSetEnabled: "extensions:setEnabled",
   ExtensionsRemove: "extensions:remove",
+  ExtensionsAdd: "extensions:add",
 
   // Memory
   MemoryGet: "memory:get",

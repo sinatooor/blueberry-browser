@@ -120,6 +120,12 @@ interface WorkbenchAPI {
     prompt: string,
     tabId?: string,
     endpoints?: EndpointSpec[],
+    previousFeature?: {
+      description?: string;
+      code: string;
+      suggested_id?: string;
+      suggested_name?: string;
+    },
   ) => Promise<BuiltFeature>;
   runFeature: (
     code: string,
@@ -149,6 +155,10 @@ interface WorkbenchAPI {
     enabled: boolean,
   ) => Promise<{ ok: boolean }>;
   extensionsRemove: (domain: string, id: string) => Promise<{ ok: boolean }>;
+  extensionsAdd: (
+    domain: string,
+    args: { id: string; name: string; script: string },
+  ) => Promise<{ ok: boolean }>;
 
   // Memory
   getMemory: (domain: string) => Promise<SiteMemory>;

@@ -2,6 +2,8 @@ import React, { useState } from 'react'
 import {
     AlertTriangle,
     ArrowRight,
+    BookmarkPlus,
+    Check,
     ChevronDown,
     ChevronRight,
     Cookie,
@@ -129,10 +131,12 @@ const BuildCard: React.FC<{
     feature: BuiltFeature
     runStatus: BuildRunStatus
 }> = ({ eventId, feature, runStatus }) => {
-    const { runBuiltFeature, discardBuiltFeature } = useThread()
+    const { runBuiltFeature, saveBuiltFeature, discardBuiltFeature } = useThread()
     const [showCode, setShowCode] = useState(false)
+    const [saving, setSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
     const danger =
         feature.mutates_data || feature.warnings.length > 0 || feature.uses_csrf
+    const canSave = !!feature.suggested_id && runStatus.kind === 'success'
 
     return (
         <Bubble
@@ -263,7 +267,8 @@ const BuildCard: React.FC<{
 
             {runStatus.kind === 'success' && (
                 <div className="text-[11px] text-success">
-                    ✓ Ran. Check the tab for <code>#bb-feature</code>.
+                    ✓ Ran. Check the tab for{' '}
+                    <code>#{feature.suggested_id ?? 'bb-feature'}</code>.
                     {runStatus.value !== undefined && runStatus.value !== null && (
                         <pre className="mt-1 max-h-32 overflow-auto bg-background border border-border rounded p-2 text-[10.5px] font-mono whitespace-pre-wrap">
                             {(() => {
@@ -274,6 +279,56 @@ const BuildCard: React.FC<{
                                 }
                             })()}
                         </pre>
+                    )}
+                    {canSave && (
+                        <div className="mt-2 flex items-center gap-2">
+                            <button
+                                type="button"
+                                disabled={saving !== 'idle'}
+                                onClick={async () => {
+                                    setSaving('saving')
+                                    try {
+                                        await saveBuiltFeature(eventId)
+                                        setSaving('saved')
+                                    } catch {
+                                        setSaving('idle')
+                                    }
+                                }}
+                                className={cn(
+                                    'flex items-center gap-1.5 text-[10.5px] font-medium px-2.5 py-1 rounded-md transition-opacity disabled:opacity-50',
+                                    saving === 'saved'
+                                        ? 'bg-success/15 text-success border border-success/30'
+                                        : 'bg-primary/10 text-primary border border-primary/30 hover:bg-primary/15',
+                                )}
+                                title={
+                                    saving === 'saved'
+                                        ? 'Saved — will replay on every visit'
+                                        : 'Persist this as a per-site extension that auto-replays on every visit'
+                                }
+                            >
+                                {saving === 'saving' ? (
+                                    <>
+                                        <Loader2 className="size-3 animate-spin" />
+                                        Saving…
+                                    </>
+                                ) : saving === 'saved' ? (
+                                    <>
+                                        <Check className="size-3" />
+                                        Saved as extension
+                                    </>
+                                ) : (
+                                    <>
+                                        <BookmarkPlus className="size-3" />
+                                        Save as extension
+                                    </>
+                                )}
+                            </button>
+                            {feature.suggested_name && (
+                                <span className="text-[10.5px] text-muted-foreground italic font-serif">
+                                    "{feature.suggested_name}"
+                                </span>
+                            )}
+                        </div>
                     )}
                 </div>
             )}

@@ -213,4 +213,12 @@ export type BuiltFeature = {
   ui_changes: string;
   answer?: string;
   warnings: string[];
+  // Identifier + label to use when the user saves this build as a per-site
+  // extension (auto-replays on every visit). The id MUST start with "bb-"
+  // and must match the id the script uses for its widget — otherwise the
+  // extensions menu's remove button can't strip the live element. The LLM
+  // is asked to emit both; we fall back to extracting the bb-id from the
+  // code via regex if missing.
+  suggested_id?: string;
+  suggested_name?: string;
 };
